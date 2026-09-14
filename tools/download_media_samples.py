@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 NASA_API = "https://images-api.nasa.gov/search"
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
-USER_AGENT = "FirstAgent-media-sampler/1.0"
+USER_AGENT = "AgentAri-media-sampler/1.0"
 NASA_TYPES = ("image", "video", "audio")
 COMMONS_CATEGORIES = {
     "image": "Public domain images",

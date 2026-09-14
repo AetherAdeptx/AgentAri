@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
         }
     }
     const std::filesystem::path vocabulary_path =
-        "/var/mnt/Storage/AI-Data/FirstAgent/Tokenizer/wordfreq-en-250000/"
+        "/var/mnt/Storage/AI-Data/AgentAri/Tokenizer/wordfreq-en-250000/"
         "wordfreq-en-common-250000.tsv";
     if (std::filesystem::exists(vocabulary_path)) {
         (void)tokenizer.load_vocabulary_file(vocabulary_path.string(), 100000U, error);
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::path shader_path = executable_path.parent_path() / "firstagent-matmul.comp.spv";
     firstagent::gpu::VulkanComputeBackend gpu(shader_path.string());
 
-    std::cout << "FirstAgent toy\n"
+    std::cout << "AgentAri toy\n"
               << "CPU SIMD: " << firstagent::hardware::preferred_simd_backend() << "\n"
               << "Tokenizer words: " << tokenizer.vocabulary_size()
               << " | active model words: " << predictor.active_vocabulary_size() << "\n";

@@ -1,4 +1,4 @@
-# FirstAgent project plan
+# AgentAri project plan
 
 ## Design principles
 

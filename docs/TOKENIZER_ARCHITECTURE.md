@@ -1,6 +1,6 @@
 # Layered tokenizer and first word predictor
 
-The first predictor follows the five layers proposed for FirstAgent:
+The first predictor follows the five layers proposed for AgentAri:
 
 | Layer | Role | Initial implementation |
 | --- | --- | --- |

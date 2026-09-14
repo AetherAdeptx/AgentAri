@@ -64,13 +64,13 @@ bool SdlWindow::open(std::string& error) {
         return true;
     }
 
-    (void)SDL_SetAppMetadata("FirstAgent", "0.1.0", "org.firstagent.runtime");
+    (void)SDL_SetAppMetadata("AgentAri", "0.1.0", "org.agentari.runtime");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         error = "SDL initialization failed: " + std::string(SDL_GetError());
         return false;
     }
 
-    window_ = SDL_CreateWindow("FirstAgent", 960, 540, SDL_WINDOW_RESIZABLE);
+    window_ = SDL_CreateWindow("AgentAri", 960, 540, SDL_WINDOW_RESIZABLE);
     if (window_ == nullptr) {
         error = "SDL window creation failed: " + std::string(SDL_GetError());
         SDL_Quit();
@@ -201,7 +201,7 @@ void SdlWindow::render(const WindowState& state) {
     SDL_RenderPresent(renderer_);
 
     std::ostringstream title;
-    title << "FirstAgent | AI: " << state.ai_ticks << " ticks | Frames: "
+    title << "AgentAri | AI: " << state.ai_ticks << " ticks | Frames: "
           << state.rendered_frames << " | " << one_line(state.status);
     if (!state.input.empty()) {
         title << " | Input: " << one_line(state.input);

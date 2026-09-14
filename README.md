@@ -1,4 +1,4 @@
-# FirstAgent
+# AgentAri
 
 The first C++ chunk of our from-scratch Linux AI project.
 
@@ -19,7 +19,7 @@ general-purpose LLM or a claim of general intelligence.
 
 ## Project status and provenance
 
-This early research snapshot was created collaboratively with ChatGPT Luna.
+This early AgentAri research snapshot was created collaboratively with ChatGPT Luna.
 It has not been tested extensively. Local build, smoke-test, unit-test, and
 sanitizer checks exist, but the project is not production-ready and should be
 expected to contain bugs, incomplete features, and changing interfaces.
@@ -40,11 +40,11 @@ The reproducible development environment is the `firstagent-dev` toolbox:
 
 ```bash
 toolbox run --container firstagent-dev \\
-  cmake -S /var/home/Ari/Codex/AI/Projects/FirstAgent \\
-        -B /var/home/Ari/Codex/AI/Projects/FirstAgent/build \\
+  cmake -S /var/home/Ari/Codex/AI/Projects/AgentAri \\
+        -B /var/home/Ari/Codex/AI/Projects/AgentAri/build \\
         -DCMAKE_BUILD_TYPE=Debug
 toolbox run --container firstagent-dev \\
-  cmake --build /var/home/Ari/Codex/AI/Projects/FirstAgent/build --parallel 2
+  cmake --build /var/home/Ari/Codex/AI/Projects/AgentAri/build --parallel 2
 ```
 
 The toolbox also contains the AI-development foundation: Eigen 5 for
@@ -136,14 +136,14 @@ Run the neural smoke demonstration with:
 
 ```bash
 toolbox run --container firstagent-dev \
-  /var/home/Ari/Codex/AI/Projects/FirstAgent/build-ninja/first-agent --nn-demo
+  /var/home/Ari/Codex/AI/Projects/AgentAri/build-ninja/first-agent --nn-demo
 ```
 
 Run the tensor, autodiff, attention, optimizer, and generation tests with:
 
 ```bash
 toolbox run --container firstagent-dev \
-  ctest --test-dir /var/home/Ari/Codex/AI/Projects/FirstAgent/build-ninja \
+  ctest --test-dir /var/home/Ari/Codex/AI/Projects/AgentAri/build-ninja \
         --output-on-failure
 ```
 

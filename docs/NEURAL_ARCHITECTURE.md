@@ -1,6 +1,6 @@
 # Neural architecture
 
-This document describes the first serious neural core of FirstAgent. It is
+This document describes the first serious neural core of AgentAri. It is
 intentionally small enough to inspect, but its boundaries are chosen so a
 larger model and accelerated backends can be added without rewriting the
 agent runtime.

@@ -1,6 +1,6 @@
 # Policy-based tensor kernels
 
-FirstAgent now has a small compile-time kernel layer in
+AgentAri now has a small compile-time kernel layer in
 `include/firstagent/Kernel.hpp`.
 
 `kernel::Matrix<Scalar, Backend, Layout>` owns a runtime-sized matrix while

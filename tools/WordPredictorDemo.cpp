@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     }
 
     const std::filesystem::path ranked_vocabulary =
-        "/var/mnt/Storage/AI-Data/FirstAgent/Tokenizer/wordfreq-en-250000/"
+        "/var/mnt/Storage/AI-Data/AgentAri/Tokenizer/wordfreq-en-250000/"
         "wordfreq-en-common-250000.tsv";
     if (std::filesystem::exists(ranked_vocabulary) &&
         !tokenizer.load_vocabulary_file(ranked_vocabulary.string(), 100000U, error)) {

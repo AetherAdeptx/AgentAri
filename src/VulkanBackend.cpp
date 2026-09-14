@@ -190,9 +190,9 @@ VulkanComputeBackend::VulkanComputeBackend(std::string shader_path)
     }
 
     VkApplicationInfo application{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    application.pApplicationName = "FirstAgent GPU backend";
+    application.pApplicationName = "AgentAri GPU backend";
     application.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-    application.pEngineName = "FirstAgent";
+    application.pEngineName = "AgentAri";
     application.engineVersion = VK_MAKE_VERSION(0, 1, 0);
     application.apiVersion = VK_API_VERSION_1_1;
     VkInstanceCreateInfo instance_info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};

@@ -1,6 +1,6 @@
 # Project notes
 
-FirstAgent is an experimental, from-scratch C++ AI and agent prototype.
+AgentAri is an experimental, from-scratch C++ AI and agent prototype.
 
 The initial project structure and implementation were created collaboratively
 with ChatGPT Luna. This repository is an early research snapshot and has not
