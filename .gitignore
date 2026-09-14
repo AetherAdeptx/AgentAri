@@ -1,0 +1,6 @@
+/build/
+/build-*/
+/data/*.tmp
+/third_party/
+__pycache__/
+*.pyc

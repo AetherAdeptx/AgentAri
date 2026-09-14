@@ -1,0 +1,52 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer LeftBuffer {
+    float left_values[];
+};
+
+layout(set = 0, binding = 1) readonly buffer RightBuffer {
+    float right_values[];
+};
+
+layout(set = 0, binding = 2) writeonly buffer OutputBuffer {
+    float output_values[];
+};
+
+layout(push_constant) uniform Parameters {
+    uint count;
+    uint operation;
+    float unused_scalar;
+};
+
+float gelu_value(float value) {
+    const float coefficient = 0.044715;
+    const float root_two_over_pi = 0.7978845608;
+    return 0.5 * value * (1.0 + tanh(root_two_over_pi *
+        (value + coefficient * value * value * value)));
+}
+
+void main() {
+    const uint index = gl_GlobalInvocationID.x;
+    if (index >= count) {
+        return;
+    }
+    const float left = left_values[index];
+    const float right = right_values[index];
+    if (operation == 0U) {
+        output_values[index] = left + right;
+    } else if (operation == 1U) {
+        output_values[index] = left - right;
+    } else if (operation == 2U) {
+        output_values[index] = left * right;
+    } else if (operation == 3U) {
+        output_values[index] = max(left, 0.0);
+    } else if (operation == 4U) {
+        output_values[index] = left / (1.0 + exp(-left));
+    } else if (operation == 5U) {
+        output_values[index] = gelu_value(left);
+    } else {
+        output_values[index] = 1.0 / (1.0 + exp(-left));
+    }
+}

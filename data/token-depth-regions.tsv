@@ -1,0 +1,29 @@
+# FirstAgent token depth map, version 1
+#
+# This is a region policy, not a tokenizer implementation. Future tokenizers
+# should assign a token to one of these regions, then use depth and mobility
+# as the token's default learning/update behavior.
+#
+# Columns:
+# region            Stable human-readable category.
+# byte_start/end    Inclusive UTF-8 byte range for the initial byte tokenizer.
+# depth             0 = shallow/easy to move; 255 = deep/hard to move.
+# mobility          Multiplier for future embedding/weight updates.
+# notes             Why this region has its default behavior.
+region	byte_start	byte_end	depth	mobility	notes
+control	0	8	16	1.00	Non-printing control bytes are shallow placeholders.
+whitespace	9	13	24	0.95	Whitespace is structural and should adapt quickly.
+control	14	31	16	1.00	Remaining control bytes are shallow placeholders.
+punctuation	32	47	48	0.80	Common symbols and punctuation stay relatively mobile.
+numeric	48	57	128	0.45	Numbers are moderately stable patterns.
+punctuation	58	64	48	0.80	Separators and symbols stay relatively mobile.
+alphabetic	65	90	224	0.12	Latin uppercase text is deep and changes slowly.
+punctuation	91	96	48	0.80	Delimiters and symbols stay relatively mobile.
+alphabetic	97	122	224	0.12	Latin lowercase text is deep and changes slowly.
+punctuation	123	126	48	0.80	Delimiters and symbols stay relatively mobile.
+control	127	127	16	1.00	Delete control byte remains shallow.
+extended-byte	128	255	160	0.30	UTF-8 continuation/extended bytes are moderately deep until a real tokenizer groups them.
+special-pad	-	-	8	1.00	Future padding token; should never become semantically anchored.
+special-bos	-	-	200	0.20	Future beginning-of-sequence marker.
+special-eos	-	-	200	0.20	Future end-of-sequence marker.
+special-unknown	-	-	96	0.60	Future unknown-token fallback; adaptable but not fully shallow.

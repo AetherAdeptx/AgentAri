@@ -1,0 +1,33 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer LeftMatrix {
+    float left_values[];
+};
+layout(set = 0, binding = 1, std430) readonly buffer RightMatrix {
+    float right_values[];
+};
+layout(set = 0, binding = 2, std430) writeonly buffer OutputMatrix {
+    float output_values[];
+};
+
+layout(push_constant) uniform Dimensions {
+    uint rows;
+    uint inner;
+    uint columns;
+};
+
+void main() {
+    const uint row = gl_GlobalInvocationID.y;
+    const uint column = gl_GlobalInvocationID.x;
+    if (row >= rows || column >= columns) {
+        return;
+    }
+
+    float result = 0.0;
+    for (uint index = 0; index < inner; ++index) {
+        result += left_values[row * inner + index] * right_values[index * columns + column];
+    }
+    output_values[row * columns + column] = result;
+}
