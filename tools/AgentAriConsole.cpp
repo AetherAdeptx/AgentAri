@@ -49,6 +49,7 @@ using agentari::text::hierarchical::sequence_begin_id;
 struct ConsoleOptions {
     std::size_t neurons{56000U};
     std::size_t workers{0U};
+    std::size_t max_cpu_usage_percent{100U};
     std::string log_path{"agentari-console.log"};
     std::string state_path{"agentari-console-state.txt"};
     bool resume_state{false};
@@ -57,7 +58,8 @@ struct ConsoleOptions {
 
 void print_usage(const char* program) {
     std::cout << "Usage: " << program
-              << " [--neurons N] [--workers N] [--log PATH] [--state PATH]"
+              << " [--total-neurons N] [--workers N] [--max-cpu-usage PCT]"
+                 " [--log PATH] [--state PATH]"
                  " [--resume-state] [--no-prompt]\n\n"
               << "The default is a fresh in-memory 56,000-neuron network with 28 layers.\n"
               << "Learned records are appended to the state file on each update.\n"
@@ -412,6 +414,7 @@ public:
                   << "  layers: " << state.layers.size() << " (4 tokenizer + 24 outer)\n"
                   << "  workers: " << agentari::parallel::default_worker_count()
                   << " (requested " << options_.workers << ")\n"
+                  << "  max CPU scheduler budget: " << options_.max_cpu_usage_percent << "%\n"
                   << "  CPU SIMD: " << preferred_simd_backend()
                   << "  GPU candidate: " << (gpu.vulkan_candidate ? "yes" : "no") << '\n'
                   << "  logical/usable CPUs: " << cpu.topology.logical_processors << '/'
@@ -833,6 +836,7 @@ private:
             total_transitions += layer.transition_neurons;
         }
         std::cout << "state: step=" << state.step << " neurons=" << state.total_neuron_count
+                  << " objects=" << network_.instantiated_neuron_count()
                   << " layers=" << state.layers.size()
                   << " observations=" << total_observations
                   << " transition_neurons=" << total_transitions
@@ -842,11 +846,28 @@ private:
         std::cout << "  neuron mix:";
         for (std::size_t index = 0U; index < mix.entry_count; ++index) {
             const auto& entry = mix.entries[index];
-            std::cout << ' ' << agentari::neuron::neuron_type_name(entry.type) << '='
-                      << entry.neuron_count << '(' << entry.fill_percent << "%)";
+            const std::string_view type_name = entry.type_name.empty()
+                                                   ? agentari::neuron::neuron_type_name(entry.type)
+                                                   : std::string_view(entry.type_name);
+            std::cout << ' ' << type_name << '='
+                      << entry.neuron_count;
+            if (entry.mode == agentari::neuron::NeuronAllocationMode::fixed_count) {
+                std::cout << "[fixed]";
+            } else {
+                std::cout << '(' << entry.fill_percent << "%)";
+            }
+            if (entry.layer_id != agentari::neuron::neuron_any_layer) {
+                std::cout << "@L" << entry.layer_id;
+            }
         }
         std::cout << " assigned=" << mix.assigned_neurons
                   << " unassigned=" << mix.unassigned_neurons << '\n';
+        const auto metrics = network_.spatial_map().distribution_metrics();
+        std::cout << "  spatial: occupied_cells="
+                  << network_.spatial_map().occupied_cell_count()
+                  << " ideal_spacing=" << metrics.ideal_isometric_spacing
+                  << " average_nearest_neighbor="
+                  << metrics.average_nearest_neighbor_distance << '\n';
         for (std::size_t index = 0U; index < state.layers.size(); ++index) {
             const auto& layer = state.layers[index];
             std::cout << "  " << std::setw(11) << std::left << layer_name(index)
@@ -893,8 +914,9 @@ int main(int argc, char* argv[]) {
             options.resume_state = true;
             continue;
         }
-        if (argument == "--neurons" || argument == "--workers" || argument == "--log" ||
-            argument == "--state") {
+        if (argument == "--neurons" || argument == "--total-neurons" ||
+            argument == "--workers" || argument == "--max-cpu-usage" ||
+            argument == "--log" || argument == "--state") {
             if (index + 1 >= argc) {
                 std::cerr << "Missing value for " << argument << '\n';
                 return 2;
@@ -914,12 +936,16 @@ int main(int argc, char* argv[]) {
             }
             std::size_t parsed = 0U;
             if (!parse_size(value, parsed) ||
-                (argument == "--neurons" && parsed == 0U)) {
+                ((argument == "--neurons" || argument == "--total-neurons") &&
+                 parsed == 0U) ||
+                (argument == "--max-cpu-usage" && (parsed == 0U || parsed > 100U))) {
                 std::cerr << "Invalid value for " << argument << ": " << value << '\n';
                 return 2;
             }
-            if (argument == "--neurons") {
+            if (argument == "--neurons" || argument == "--total-neurons") {
                 options.neurons = parsed;
+            } else if (argument == "--max-cpu-usage") {
+                options.max_cpu_usage_percent = parsed;
             } else {
                 options.workers = parsed;
             }
@@ -936,6 +962,7 @@ int main(int argc, char* argv[]) {
             return 2;
         }
     }
+    agentari::parallel::set_max_cpu_usage_percent(options.max_cpu_usage_percent);
     agentari::parallel::set_default_worker_count(options.workers);
     try {
         return ConsoleSession(options).run();

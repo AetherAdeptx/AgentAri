@@ -74,10 +74,11 @@ HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
         1.0e-4F) {
         throw std::invalid_argument("local and outer fractions must sum to one");
     }
-    config_.neuron_mix.validate(false);
-    neuron_mix_allocation_ = config_.neuron_mix.allocate(config_.total_neuron_count);
 
     const auto layer_counts = allocate_layer_counts();
+    neuron_mix_allocation_ = config_.neuron_mix.allocate(
+        config_.total_neuron_count,
+        std::span<const std::size_t>(layer_counts.data(), layer_counts.size()));
     state_.total_neuron_count = config_.total_neuron_count;
     state_.layers.resize(layer_counts.size());
     neuron_groups_.resize(layer_counts.size());
@@ -87,7 +88,42 @@ HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
         initialize_layer_state(layer, layer_counts[layer]);
     }
     transitions_.fill(TransitionTable{});
-    spatial_map_.allocate(std::span<const std::size_t>(layer_counts.data(), layer_counts.size()));
+    std::vector<SpatialNeuronAssignment> spatial_assignments;
+    spatial_assignments.reserve(neuron_mix_allocation_.placements.size());
+    for (const agentari::neuron::NeuronPlacement& placement :
+         neuron_mix_allocation_.placements) {
+        spatial_assignments.push_back(SpatialNeuronAssignment{
+            .type_number = placement.number,
+            .layer_id = placement.layer_id,
+        });
+    }
+    spatial_map_.allocate(
+        std::span<const std::size_t>(layer_counts.data(), layer_counts.size()),
+        std::span<const SpatialNeuronAssignment>(spatial_assignments.data(),
+                                                 spatial_assignments.size()));
+
+    // The spatial map has already reserved every cell and assigned stable
+    // type numbers. Construct each polymorphic neuron only after its cell is
+    // known, preserving the allocation order used by the deterministic map.
+    neuron_objects_.resize(spatial_map_.size());
+    for (const SpatialNeuron& spatial_neuron : spatial_map_.neurons()) {
+        if (spatial_neuron.type_number == 0U) {
+            continue;
+        }
+        const std::size_t entry_index =
+            static_cast<std::size_t>(spatial_neuron.type_number - 1U);
+        if (entry_index >= config_.neuron_mix.entry_count) {
+            throw std::logic_error("spatial neuron references an unknown mix entry");
+        }
+        const agentari::neuron::NeuronFactory& factory =
+            config_.neuron_mix.entries[entry_index].factory;
+        neuron_objects_[static_cast<std::size_t>(spatial_neuron.id)] =
+            factory ? factory(spatial_neuron.id + 0xA17E'0000ULL)
+                    : std::make_unique<agentari::neuron::Neuron>();
+        if (neuron_objects_[static_cast<std::size_t>(spatial_neuron.id)] != nullptr) {
+            ++instantiated_neuron_count_;
+        }
+    }
 }
 
 std::size_t HierarchicalPredictionNetwork::index(const PredictionLayer layer) noexcept {
@@ -766,6 +802,15 @@ const agentari::neuron::NeuronMixConfig& HierarchicalPredictionNetwork::neuron_m
 const agentari::neuron::NeuronMixAllocation&
 HierarchicalPredictionNetwork::neuron_mix_allocation() const noexcept {
     return neuron_mix_allocation_;
+}
+
+const std::vector<std::unique_ptr<agentari::neuron::Neuron>>&
+HierarchicalPredictionNetwork::neurons() const noexcept {
+    return neuron_objects_;
+}
+
+std::size_t HierarchicalPredictionNetwork::instantiated_neuron_count() const noexcept {
+    return instantiated_neuron_count_;
 }
 
 PredictionNetworkState HierarchicalPredictionNetwork::state() const {

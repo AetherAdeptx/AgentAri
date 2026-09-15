@@ -29,6 +29,16 @@ void require(bool condition, const std::string& message) {
     }
 }
 
+class TestCustomNeuron final : public agentari::neuron::Neuron {
+public:
+    explicit TestCustomNeuron(const std::uint64_t seed) : seed_(seed) {}
+
+    void reset_state() noexcept override { seed_ = 0U; }
+
+private:
+    std::uint64_t seed_{0U};
+};
+
 void bit_packing_round_trip() {
     using namespace agentari::bits;
     require(align_up(0U, 64U) == 0U, "zero alignment mismatch");
@@ -86,6 +96,12 @@ void topology_and_parallel_execution() {
     require(automatic_workers >= 1U &&
                 automatic_workers <= capabilities.topology.usable_processors,
             "automatic worker policy returned an invalid count");
+    agentari::parallel::set_max_cpu_usage_percent(50U);
+    require(agentari::parallel::available_worker_count() >= 1U &&
+                agentari::parallel::available_worker_count() <=
+                    capabilities.topology.usable_processors,
+            "CPU usage budget returned an invalid worker cap");
+    agentari::parallel::set_max_cpu_usage_percent(100U);
     agentari::parallel::set_default_worker_count(2U);
     require(agentari::parallel::default_worker_count() <= 2U,
             "configurable worker policy was not applied");
@@ -185,6 +201,20 @@ void configurable_neuron_mix() {
     agentari::text::hierarchical::HierarchicalPredictionNetwork network(network_config);
     require(network.neuron_mix_allocation().assigned_neurons == 1000U,
             "prediction network did not load its neuron mix");
+
+    NeuronMixConfig custom;
+    custom.add_custom_fixed<TestCustomNeuron>("test_custom", 2U, 0U);
+    custom.add_percentage(NeuronType::basic, 100.0F);
+    agentari::text::hierarchical::PredictionNetworkConfig custom_config;
+    custom_config.total_neuron_count = 16U;
+    custom_config.neurons_per_layer = 1U;
+    custom_config.additional_layer_count = 0U;
+    custom_config.min_neurons_per_layer = 1U;
+    custom_config.neuron_mix = custom;
+    agentari::text::hierarchical::HierarchicalPredictionNetwork custom_network(custom_config);
+    require(custom_network.instantiated_neuron_count() == 16U &&
+                custom_network.neurons()[0U] != nullptr,
+            "custom inherited neuron factory did not construct the neuron bank");
 }
 
 void scalable_cpu_matrix() {

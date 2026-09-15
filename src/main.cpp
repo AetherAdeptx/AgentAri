@@ -18,10 +18,13 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -68,17 +71,18 @@ struct HierarchicalRuntime {
     agentari::text::hierarchical::HierarchicalPredictionNetwork network;
 };
 
-agentari::text::hierarchical::PredictionNetworkConfig hierarchical_network_config() {
+agentari::text::hierarchical::PredictionNetworkConfig hierarchical_network_config(
+    const std::size_t total_neurons) {
     using namespace agentari::text::hierarchical;
     PredictionNetworkConfig config;
-    config.total_neuron_count = 0U;
+    config.total_neuron_count = total_neurons;
     config.neurons_per_layer = 2000U;
     config.additional_layer_count = 24U;
     config.min_neurons_per_layer = Min_Neurons_Per_Layer;
     return config;
 }
 
-HierarchicalRuntime start_hierarchical_runtime() {
+HierarchicalRuntime start_hierarchical_runtime(const std::size_t total_neurons) {
     using namespace agentari::text::hierarchical;
 
     HierarchicalRuntime runtime{
@@ -93,7 +97,7 @@ HierarchicalRuntime start_hierarchical_runtime() {
             .vocabulary_capacity = 100000U,
             .context = ContextTokenizerConfig{.recent_word_limit = 256U},
         }),
-        .network = HierarchicalPredictionNetwork(hierarchical_network_config()),
+        .network = HierarchicalPredictionNetwork(hierarchical_network_config(total_neurons)),
     };
     return runtime;
 }
@@ -162,11 +166,17 @@ void print_usage(const char* program) {
     std::cout << "Usage: " << program << " [--memory PATH]\n"
               << "       " << program << " [--memory PATH] [--run-for-ms N]\n"
               << "       " << program << " --test [--run-for-ms N]\n"
-              << "       " << program << " [--workers N] [--log PATH] [--vulkan]\n"
+              << "       " << program << " [--total-neurons N] [--workers N] [--log PATH]\n"
+              << "               [--max-cpu-usage PCT] [--max-gpu-usage PCT] [--no-gui]\n"
+              << "               [--vulkan]\n"
               << "       " << program << " --nn-demo\n"
               << "       " << program << " --word-demo\n"
               << "\n--test uses a temporary runtime workspace and removes it on shutdown.\n"
               << "\n--workers 0 selects usable logical CPUs minus two; a positive value overrides it.\n"
+              << "--total-neurons N sets the hierarchical network budget (default: 56,000).\n"
+              << "--max-cpu-usage PCT caps the scheduler's worker-thread budget.\n"
+              << "--max-gpu-usage PCT records the future GPU scheduler budget.\n"
+              << "--no-gui runs the 8 ms AI loop without opening SDL; pair with --run-for-ms.\n"
               << "--log PATH removes the previous log at that exact path and starts a fresh transient log.\n"
               << "\nThe AI scheduler runs at a fixed 8 ms interval (125 Hz).\n";
 }
@@ -273,6 +283,10 @@ int main(int argc, char* argv[]) {
     bool word_demo = false;
     bool test_mode = false;
     bool vulkan_requested = false;
+    bool no_gui = false;
+    std::size_t total_neuron_count = 0U;
+    std::size_t max_cpu_usage_percent = 100U;
+    std::size_t max_gpu_usage_percent = 100U;
     std::filesystem::path log_path = "agentari-runtime.log";
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -291,6 +305,46 @@ int main(int argc, char* argv[]) {
             }
         } else if (argument == "--test") {
             test_mode = true;
+        } else if (argument == "--no-gui") {
+            no_gui = true;
+        } else if ((argument == "--total-neurons" || argument == "--neurons") &&
+                   index + 1 < argc) {
+            try {
+                const std::string neuron_argument = argv[++index];
+                if (!neuron_argument.empty() && neuron_argument.front() == '-') {
+                    throw std::invalid_argument("must be positive");
+                }
+                const auto neurons = std::stoull(neuron_argument);
+                if (neurons == 0U ||
+                    neurons > static_cast<unsigned long long>(
+                                  std::numeric_limits<std::size_t>::max())) {
+                    throw std::invalid_argument("must be positive and fit the host size type");
+                }
+                total_neuron_count = static_cast<std::size_t>(neurons);
+            } catch (const std::exception& exception) {
+                std::cerr << "Invalid " << argument << " value: " << exception.what() << '\n';
+                return 2;
+            }
+        } else if ((argument == "--max-cpu-usage" || argument == "--max-gpu-usage") &&
+                   index + 1 < argc) {
+            try {
+                const std::string usage_argument = argv[++index];
+                if (!usage_argument.empty() && usage_argument.front() == '-') {
+                    throw std::invalid_argument("must be between 1 and 100");
+                }
+                const auto usage = std::stoull(usage_argument);
+                if (usage == 0U || usage > 100U) {
+                    throw std::invalid_argument("must be between 1 and 100");
+                }
+                if (argument == "--max-cpu-usage") {
+                    max_cpu_usage_percent = static_cast<std::size_t>(usage);
+                } else {
+                    max_gpu_usage_percent = static_cast<std::size_t>(usage);
+                }
+            } catch (const std::exception& exception) {
+                std::cerr << "Invalid " << argument << " value: " << exception.what() << '\n';
+                return 2;
+            }
         } else if (argument == "--workers" && index + 1 < argc) {
             try {
                 const std::string worker_argument = argv[++index];
@@ -322,6 +376,12 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    agentari::parallel::set_max_cpu_usage_percent(max_cpu_usage_percent);
+    if (no_gui && !run_for.count()) {
+        std::cerr << "--no-gui requires --run-for-ms so the headless process has a bounded run.\n";
+        return 2;
+    }
+
     RuntimeTestWorkspace test_workspace(test_mode);
     if (!test_workspace.ready()) {
         std::cerr << "Unable to start test mode: " << test_workspace.error() << '\n';
@@ -345,7 +405,10 @@ int main(int argc, char* argv[]) {
                  std::to_string(startup_cpu.topology.logical_processors) +
                  " usable_processors=" +
                  std::to_string(startup_cpu.topology.usable_processors) +
-                 " simd=" + agentari::system::simd_name(startup_cpu.simd));
+                 " simd=" + agentari::system::simd_name(startup_cpu.simd) +
+                 " max_cpu_usage_percent=" + std::to_string(max_cpu_usage_percent) +
+                 " max_gpu_usage_percent=" + std::to_string(max_gpu_usage_percent) +
+                 " total_neurons=" + std::to_string(total_neuron_count));
 
     if (neural_demo) {
         run_log.info("running neural demo");
@@ -421,12 +484,15 @@ int main(int argc, char* argv[]) {
     });
     agentari::Agent agent(memory, tools, &predictor, &context);
     agentari::AgentWorker agent_worker(agent);
-    HierarchicalRuntime hierarchical_runtime = start_hierarchical_runtime();
-    agentari::SdlWindow window;
-    if (!window.open(error)) {
-        run_log.error("failed to open SDL window: " + error);
-        std::cerr << "Failed to open runtime window: " << error << '\n';
-        return 1;
+    HierarchicalRuntime hierarchical_runtime = start_hierarchical_runtime(total_neuron_count);
+    std::optional<agentari::SdlWindow> window;
+    if (!no_gui) {
+        window.emplace();
+        if (!window->open(error)) {
+            run_log.error("failed to open SDL window: " + error);
+            std::cerr << "Failed to open runtime window: " << error << '\n';
+            return 1;
+        }
     }
 
     using Clock = std::chrono::steady_clock;
@@ -447,6 +513,9 @@ int main(int argc, char* argv[]) {
                          std::to_string(agentari::parallel::default_worker_count()) +
                          " parallel workers, " +
                          std::to_string(gpu_capabilities.device_count) + " DRM GPU(s)).";
+    if (no_gui) {
+        status = "Headless learning worker ready (8 ms AI loop; no SDL window).";
+    }
     status += " Hierarchical network: " +
               std::to_string(hierarchical_runtime.network.state().total_neuron_count) +
               " neurons (fresh; checkpointing disabled).";
@@ -467,9 +536,11 @@ int main(int argc, char* argv[]) {
 
     while (running) {
         bool window_closed = false;
-        if (!window.pump_events(pending_commands, window_closed, error)) {
-            status = "Input error: " + error;
-            window_closed = true;
+        if (window.has_value()) {
+            if (!window->pump_events(pending_commands, window_closed, error)) {
+                status = "Input error: " + error;
+                window_closed = true;
+            }
         }
         input_closed = input_closed || window_closed;
 
@@ -530,13 +601,13 @@ int main(int argc, char* argv[]) {
         }
 
         const auto after_ai = Clock::now();
-        if (after_ai >= next_render) {
+        if (window.has_value() && after_ai >= next_render) {
             ++rendered_frames;
-            window.render(agentari::WindowState{
+            window->render(agentari::WindowState{
                 .uptime = std::chrono::duration_cast<std::chrono::milliseconds>(after_ai - start),
                 .ai_ticks = ai_ticks,
                 .rendered_frames = rendered_frames,
-                .input = window.input_buffer(),
+                .input = window->input_buffer(),
                 .status = status,
             });
             next_render += render_period;
@@ -552,15 +623,24 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        const auto deadline = std::min(next_ai_tick, next_render);
+        const auto deadline = window.has_value()
+                                  ? std::min(next_ai_tick, next_render)
+                                  : next_ai_tick;
         const auto current = Clock::now();
         if (deadline > current) {
-            window.wait_for_next_tick(
-                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - current));
+            const auto wait_duration = deadline - current;
+            if (window.has_value()) {
+                window->wait_for_next_tick(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(wait_duration));
+            } else {
+                std::this_thread::sleep_for(wait_duration);
+            }
         }
     }
 
-    window.close();
+    if (window.has_value()) {
+        window->close();
+    }
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
     std::cout << "AgentAri stopped. AI ticks: " << ai_ticks
               << ", rendered frames: " << rendered_frames

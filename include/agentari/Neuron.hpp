@@ -12,6 +12,16 @@
 
 namespace agentari::neuron {
 
+// Minimal polymorphic hook for experiments with user-defined neuron classes.
+// Concrete neurons may add any forward/learning API they need; the network's
+// allocation layer only requires a stable lifetime and reset hook. The
+// compile-time neuron templates below can also be used as base-class objects.
+class Neuron {
+public:
+    virtual ~Neuron() = default;
+    virtual void reset_state() noexcept {}
+};
+
 // Storage policies let a network choose between fast FP32 weights, compact
 // int8 weights, and bit-packed binary weights without changing its topology.
 // DenseStorage is the default for learning; the compact policies are useful
@@ -189,7 +199,7 @@ template <std::size_t InputWidth,
           template <std::size_t> class WeightStorage = DenseStorage,
           template <std::size_t> class StateStorage = DenseStorage,
           typename Features = ModernFeatures>
-class AdaptiveNeuron {
+class AdaptiveNeuron : public Neuron {
     static_assert(InputWidth > 0U && StateWidth > 0U && OutputWidth > 0U,
                   "neuron dimensions must be non-zero");
 
@@ -310,7 +320,7 @@ public:
         return prediction;
     }
 
-    void reset_state() noexcept {
+    void reset_state() noexcept override {
         for (std::size_t index = 0U; index < StateWidth; ++index) {
             state_.set(index, 0.0F);
             if constexpr (Features::eligibility_trace) {
@@ -462,7 +472,7 @@ template <std::size_t InputWidth,
           template <std::size_t> class WeightStorage = DenseStorage,
           template <std::size_t> class StateStorage = DenseStorage,
           typename Features = ModernFeatures>
-class SparseMixtureNeuron {
+class SparseMixtureNeuron : public Neuron {
     static_assert(ExpertCount > 0U && TopK > 0U && TopK <= ExpertCount,
                   "mixture neurons require 1..ExpertCount active experts");
     using Expert = AdaptiveNeuron<InputWidth, StateWidth, OutputWidth,
@@ -532,7 +542,7 @@ public:
         return prediction;
     }
 
-    void reset_state() noexcept {
+    void reset_state() noexcept override {
         for (Expert& expert : experts_) {
             expert.reset_state();
         }

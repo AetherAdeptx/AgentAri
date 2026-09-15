@@ -2,13 +2,16 @@
 #include "agentari/Parallel.hpp"
 #include "agentari/TeacherFeedback.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -139,9 +142,10 @@ void predictive_layers_learn() {
         require(region.position.coordinate() == region.anchor && region.position.color() == 0U,
                 "packed layer position does not match its 3D anchor");
     }
-    require(spatial.occupied_cell_count() > 0U &&
-                spatial.occupied_cell_count() <= spatial.size(),
-            "spatial map occupancy index is invalid");
+    require(spatial.occupied_cell_count() == spatial.size(),
+            "spatial map allowed overlapping neurons");
+    std::vector<std::uint64_t> positions;
+    positions.reserve(spatial.size());
     std::vector<std::size_t> mapped_layer_counts(spatial.layer_count(), 0U);
     for (std::size_t neuron_index = 0U; neuron_index < spatial.neurons().size();
          ++neuron_index) {
@@ -155,6 +159,7 @@ void predictive_layers_learn() {
                 "spatial neuron escaped the 128 cubed grid");
         require(neuron.position.coordinate() == neuron.coordinate && neuron.position.color() == 0U,
                 "packed neuron position does not match its 3D coordinate");
+        positions.push_back(neuron.position.value);
         ++mapped_layer_counts[neuron.layer_id];
         require(spatial.find(neuron.id) != nullptr,
                 "spatial map ID lookup failed");
@@ -164,6 +169,9 @@ void predictive_layers_learn() {
     for (const std::size_t count : mapped_layer_counts) {
         require(count == 2000U, "spatial map did not retain every neuron in its layer");
     }
+    std::sort(positions.begin(), positions.end());
+    require(std::adjacent_find(positions.begin(), positions.end()) == positions.end(),
+            "spatial map emitted duplicate packed coordinates");
 
     const SpatialNeuron& first_neuron = spatial.neurons().front();
     const SpatialSearchQuery exact_query{
@@ -206,6 +214,77 @@ void predictive_layers_learn() {
     }
     require(scaled_total == 10000U && scaled_network.layer_count() == prediction_layer_count,
             "global budget did not rescale correctly when extra layers were removed");
+}
+
+void typed_allocation_order_and_determinism() {
+    using namespace agentari::text::hierarchical;
+    using agentari::neuron::NeuronType;
+
+    agentari::neuron::NeuronMixConfig mix;
+    mix.add_fixed(NeuronType::basic, 3U, 2U);
+    mix.add_fixed(NeuronType::modern_gated, 4U);
+    mix.add_percentage(NeuronType::compact_modern, 50.0F);
+    mix.add_percentage(NeuronType::binary_inference, 50.0F);
+
+    PredictionNetworkConfig config;
+    config.total_neuron_count = 100U;
+    config.neurons_per_layer = 1U;
+    config.additional_layer_count = 0U;
+    config.min_neurons_per_layer = 1U;
+    config.neuron_mix = mix;
+
+    HierarchicalPredictionNetwork first(config);
+    const auto& allocation = first.neuron_mix_allocation();
+    require(allocation.assigned_neurons == 100U && allocation.unassigned_neurons == 0U &&
+                allocation.placements.size() == 100U,
+            "typed neuron allocation did not consume the configured budget");
+    require(first.instantiated_neuron_count() == 100U && first.neurons().size() == 100U,
+            "typed allocation did not construct one polymorphic neuron per typed cell");
+    for (const auto& neuron : first.neurons()) {
+        require(neuron != nullptr,
+                "complete typed allocation left a missing polymorphic neuron");
+    }
+    require(allocation.entries[0U].neuron_count == 3U &&
+                allocation.entries[1U].neuron_count == 4U &&
+                allocation.entries[2U].neuron_count == 47U &&
+                allocation.entries[3U].neuron_count == 46U,
+            "fixed and percentage allocation order was not deterministic");
+    require(first.spatial_map().neurons().size() >= 3U &&
+                first.spatial_map().neurons()[0U].type_number == 1U &&
+                first.spatial_map().neurons()[1U].type_number == 1U &&
+                first.spatial_map().neurons()[2U].type_number == 1U,
+            "fixed typed neurons were not physically inserted first");
+
+    std::unordered_map<std::uint32_t, std::size_t> type_counts;
+    for (const SpatialNeuron& neuron : first.spatial_map().neurons()) {
+        ++type_counts[neuron.type_number];
+        require(neuron.type_number != 0U,
+                "complete typed allocation left an unassigned spatial neuron");
+        if (neuron.type_number == 1U) {
+            require(neuron.layer_id == 2U,
+                    "layer-biased fixed neurons were assigned to the wrong layer");
+        }
+    }
+    require(type_counts[1U] == 3U && type_counts[2U] == 4U &&
+                type_counts[3U] == 47U && type_counts[4U] == 46U,
+            "spatial map lost typed neuron assignments");
+
+    const SpatialDistributionMetrics metrics = first.spatial_map().distribution_metrics();
+    require(metrics.ideal_isometric_spacing > 0.0 &&
+                metrics.average_nearest_neighbor_distance > 0.0,
+            "spatial distribution metrics were not calculated");
+
+    HierarchicalPredictionNetwork second(config);
+    require(first.spatial_map().neurons().size() == second.spatial_map().neurons().size(),
+            "deterministic spatial maps changed size");
+    for (std::size_t index = 0U; index < first.spatial_map().neurons().size(); ++index) {
+        const auto& left = first.spatial_map().neurons()[index];
+        const auto& right = second.spatial_map().neurons()[index];
+        require(left.coordinate == right.coordinate &&
+                    left.type_number == right.type_number &&
+                    left.layer_id == right.layer_id,
+                "identical network configurations produced different spatial maps");
+    }
 }
 
 void batched_observation_contract() {
@@ -388,6 +467,7 @@ void teacher_feedback_contract() {
 int main() {
     try {
         predictive_layers_learn();
+        typed_allocation_order_and_determinism();
         batched_observation_contract();
         worker_local_delta_contract();
         teacher_feedback_contract();

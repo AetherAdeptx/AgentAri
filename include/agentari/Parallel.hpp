@@ -24,6 +24,7 @@ struct Config {
 };
 
 inline std::atomic<std::size_t> configured_default_worker_count{0U};
+inline std::atomic<std::size_t> configured_max_cpu_usage_percent{100U};
 inline thread_local bool inside_parallel_worker = false;
 
 namespace detail {
@@ -177,8 +178,14 @@ private:
 
 [[nodiscard]] inline std::size_t available_worker_count() noexcept {
     const auto& topology = system::cpu_capabilities().topology;
-    return std::max<std::size_t>(1U, std::min(topology.logical_processors,
-                                              topology.usable_processors));
+    const std::size_t available = std::max<std::size_t>(
+        1U, std::min(topology.logical_processors, topology.usable_processors));
+    const std::size_t usage = std::clamp(
+        configured_max_cpu_usage_percent.load(std::memory_order_acquire),
+        std::size_t{1U}, std::size_t{100U});
+    const std::size_t limited =
+        (available * usage + 99U) / 100U;
+    return std::max<std::size_t>(1U, std::min(available, limited));
 }
 
 [[nodiscard]] inline std::size_t automatic_worker_count() noexcept {
@@ -190,6 +197,21 @@ private:
 // policy. Values above the usable affinity set are capped at that set.
 inline void set_default_worker_count(std::size_t worker_count) noexcept {
     configured_default_worker_count.store(worker_count, std::memory_order_release);
+}
+
+// This is a scheduling budget, not a measurement of instantaneous package
+// utilization. It caps the number of worker threads selected by the default
+// policy while keeping at least one worker available for progress.
+inline void set_max_cpu_usage_percent(const std::size_t percent) noexcept {
+    configured_max_cpu_usage_percent.store(
+        std::clamp(percent, std::size_t{1U}, std::size_t{100U}),
+        std::memory_order_release);
+}
+
+[[nodiscard]] inline std::size_t max_cpu_usage_percent() noexcept {
+    return std::clamp(
+        configured_max_cpu_usage_percent.load(std::memory_order_acquire),
+        std::size_t{1U}, std::size_t{100U});
 }
 
 [[nodiscard]] inline std::size_t default_worker_count() noexcept {

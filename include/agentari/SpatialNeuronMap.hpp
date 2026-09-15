@@ -70,10 +70,26 @@ struct SpatialLayerRegion {
 
 struct SpatialNeuron {
     SpatialNeuronId id{0U};
+    // Zero means the cell is intentionally untyped/unassigned. Configured
+    // neuron mix entries use stable one-based numbers from their list order.
+    std::uint32_t type_number{0U};
     std::uint32_t layer_id{0U};
     SpatialNeuronId layer_local_index{0U};
     SpatialCoordinate coordinate{};
     PackedSpatialPosition position{};
+};
+
+struct SpatialNeuronAssignment {
+    std::uint32_t type_number{0U};
+    std::uint32_t layer_id{0U};
+};
+
+struct SpatialDistributionMetrics {
+    // The ideal cubic-center spacing for this grid and population size.
+    double ideal_isometric_spacing{0.0};
+    // Actual mean nearest-neighbor distance. Unassigned cells are not
+    // neurons and therefore do not participate in this value.
+    double average_nearest_neighbor_distance{0.0};
 };
 
 struct SpatialSearchQuery {
@@ -90,9 +106,12 @@ public:
     SpatialNeuronMap();
 
     // Rebuilds the map from layer sizes. The span index is the layer ID.
-    // Every neuron receives a coordinate, while a cell remains capable of
-    // holding multiple neurons for future compressed or over-subscribed maps.
+    // Every neuron receives a unique coordinate. The overload with
+    // assignments loads typed neurons into those cells in deterministic
+    // allocation order; remaining cells have type_number zero.
     void allocate(std::span<const std::size_t> layer_neuron_counts);
+    void allocate(std::span<const std::size_t> layer_neuron_counts,
+                  std::span<const SpatialNeuronAssignment> assignments);
     void clear();
 
     [[nodiscard]] std::size_t size() const noexcept;
@@ -100,6 +119,7 @@ public:
     [[nodiscard]] std::size_t layer_count() const noexcept;
     [[nodiscard]] const std::vector<SpatialNeuron>& neurons() const noexcept;
     [[nodiscard]] const std::vector<SpatialLayerRegion>& layers() const noexcept;
+    [[nodiscard]] SpatialDistributionMetrics distribution_metrics() const;
     [[nodiscard]] const SpatialNeuron* find(SpatialNeuronId id) const noexcept;
     [[nodiscard]] const SpatialNeuron* find(SpatialCoordinate coordinate) const noexcept;
 
@@ -124,6 +144,7 @@ private:
     std::vector<SpatialNeuronId> next_in_cell_;
     std::vector<SpatialLayerRegion> layers_;
     std::size_t occupied_cells_{0U};
+    double ideal_isometric_spacing_{0.0};
 
     [[nodiscard]] static std::size_t linear_index(SpatialCoordinate coordinate) noexcept;
     [[nodiscard]] static std::uint16_t bounce_axis(std::int64_t value) noexcept;
@@ -138,6 +159,9 @@ private:
                                                          std::size_t local_index) const noexcept;
     [[nodiscard]] SpatialCoordinate find_free_coordinate(SpatialCoordinate preferred,
                                                           std::size_t local_index) const;
+    [[nodiscard]] std::int64_t nearest_occupied_distance_squared(
+        SpatialCoordinate coordinate,
+        SpatialNeuronId ignored_neuron = invalid_spatial_neuron_id) const noexcept;
     [[nodiscard]] bool occupied(SpatialCoordinate coordinate) const noexcept;
     void insert(SpatialNeuron neuron);
     [[nodiscard]] std::size_t visit_query(const SpatialSearchQuery& query,

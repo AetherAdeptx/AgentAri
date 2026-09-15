@@ -96,7 +96,28 @@ config.neuron_mix.add(agentari::neuron::NeuronType::modern_gated, 4.0F);
 
 Partial mixes leave the remainder explicitly unassigned. A complete mix uses
 largest-remainder rounding so its type counts add up exactly to the network
-budget; `/state` prints the resulting counts.
+budget; `/state` prints the resulting counts. Fixed entries and layer bias are
+also supported:
+
+```cpp
+mix.add_fixed(agentari::neuron::NeuronType::basic, 2000U, 15U);
+mix.add_fixed(agentari::neuron::NeuronType::modern_gated, 1000U, 16U);
+mix.add_percentage(agentari::neuron::NeuronType::compact_modern, 50.0F);
+```
+
+The allocator reserves layer-biased fixed entries first, then unbound fixed
+entries, then percentage entries from the remaining global budget. Spatial
+placement evaluates each free candidate against the occupied cells, preserves
+one-neuron-per-cell, and uses deterministic tie-breaking. The console reports
+ideal isometric spacing and measured nearest-neighbor spacing.
+
+Custom experiments can inherit from `agentari::neuron::Neuron` and register a
+factory-backed type with `add_custom_fixed<T>()` or
+`add_custom_percentage<T>()`.
+
+The SDL executable accepts `--total-neurons N`, `--max-cpu-usage PCT`,
+`--max-gpu-usage PCT`, and `--no-gui`. CPU limits cap worker-thread selection;
+the GPU value is recorded as a scheduler budget until GPU throttling is added.
 
 ## Feeding a text file
 

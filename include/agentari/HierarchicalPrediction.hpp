@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -163,6 +164,11 @@ public:
     [[nodiscard]] const agentari::neuron::NeuronMixConfig& neuron_mix() const noexcept;
     [[nodiscard]] const agentari::neuron::NeuronMixAllocation& neuron_mix_allocation()
         const noexcept;
+    // One slot is retained for every spatial neuron. Unassigned mix slots are
+    // null; typed slots contain the factory-created polymorphic neuron.
+    [[nodiscard]] const std::vector<std::unique_ptr<agentari::neuron::Neuron>>&
+    neurons() const noexcept;
+    [[nodiscard]] std::size_t instantiated_neuron_count() const noexcept;
     [[nodiscard]] PredictionNetworkState state() const;
     [[nodiscard]] const SpatialNeuronMap& spatial_map() const noexcept;
     [[nodiscard]] std::size_t layer_count() const noexcept;
@@ -194,6 +200,8 @@ private:
     PredictionNetworkState state_;
     agentari::neuron::NeuronMixAllocation neuron_mix_allocation_{};
     SpatialNeuronMap spatial_map_;
+    std::vector<std::unique_ptr<agentari::neuron::Neuron>> neuron_objects_;
+    std::size_t instantiated_neuron_count_{0U};
     // Every neuron in one routing group receives the same scalar input. Keep
     // one representative activation per group instead of touching tens of
     // thousands of identical floats on every training record.
