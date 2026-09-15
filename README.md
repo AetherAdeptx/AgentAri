@@ -50,6 +50,10 @@ cmake --build build-agentari --parallel
 ctest --test-dir build-agentari --output-on-failure
 ```
 
+Code::Blocks users can open [`AgentAri.cbp`](AgentAri.cbp). Its targets
+configure and build the project through CMake, including the console, tests,
+and SDL app.
+
 ## Console use
 
 Start the console with:
@@ -81,6 +85,18 @@ Learned records can persist between runs in a state journal:
 
 Without `--resume-state`, the exact state path is cleared on startup so an
 experiment begins fresh.
+
+The network can load a mix of the available compile-time neuron presets at
+runtime. Each entry stores a neuron type and percentage fill:
+
+```cpp
+config.neuron_mix.add(agentari::neuron::NeuronType::basic, 5.0F);
+config.neuron_mix.add(agentari::neuron::NeuronType::modern_gated, 4.0F);
+```
+
+Partial mixes leave the remainder explicitly unassigned. A complete mix uses
+largest-remainder rounding so its type counts add up exactly to the network
+budget; `/state` prints the resulting counts.
 
 ## Feeding a text file
 

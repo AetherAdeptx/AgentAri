@@ -2,6 +2,7 @@
 
 #include "agentari/SpatialNeuronMap.hpp"
 #include "agentari/HierarchicalTokenizer.hpp"
+#include "agentari/NeuronMix.hpp"
 
 #include <array>
 #include <cstddef>
@@ -49,6 +50,10 @@ struct PredictionNetworkConfig {
         1U, 1U, 1U, 1U};
     std::size_t additional_layer_size_weight{1U};
     std::size_t min_neurons_per_layer{Min_Neurons_Per_Layer};
+    // The runtime descriptor selects how the global neuron budget is divided
+    // among the compile-time neuron presets in NeuronMix.hpp.
+    agentari::neuron::NeuronMixConfig neuron_mix{
+        agentari::neuron::default_neuron_mix()};
 
     // The first routing split is deliberate: 15% of a layer bank is local to
     // that layer, while 85% belongs to the outer/network-reference bank. For
@@ -155,6 +160,9 @@ public:
                         std::uint32_t target) const;
 
     [[nodiscard]] const PredictionNetworkConfig& config() const noexcept;
+    [[nodiscard]] const agentari::neuron::NeuronMixConfig& neuron_mix() const noexcept;
+    [[nodiscard]] const agentari::neuron::NeuronMixAllocation& neuron_mix_allocation()
+        const noexcept;
     [[nodiscard]] PredictionNetworkState state() const;
     [[nodiscard]] const SpatialNeuronMap& spatial_map() const noexcept;
     [[nodiscard]] std::size_t layer_count() const noexcept;
@@ -184,6 +192,7 @@ private:
 
     PredictionNetworkConfig config_;
     PredictionNetworkState state_;
+    agentari::neuron::NeuronMixAllocation neuron_mix_allocation_{};
     SpatialNeuronMap spatial_map_;
     // Every neuron in one routing group receives the same scalar input. Keep
     // one representative activation per group instead of touching tens of

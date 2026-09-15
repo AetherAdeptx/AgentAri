@@ -74,6 +74,8 @@ HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
         1.0e-4F) {
         throw std::invalid_argument("local and outer fractions must sum to one");
     }
+    config_.neuron_mix.validate(false);
+    neuron_mix_allocation_ = config_.neuron_mix.allocate(config_.total_neuron_count);
 
     const auto layer_counts = allocate_layer_counts();
     state_.total_neuron_count = config_.total_neuron_count;
@@ -754,6 +756,16 @@ HierarchicalPredictionNetwork::inspect_association(const PredictionLayer layer,
 
 const PredictionNetworkConfig& HierarchicalPredictionNetwork::config() const noexcept {
     return config_;
+}
+
+const agentari::neuron::NeuronMixConfig& HierarchicalPredictionNetwork::neuron_mix()
+    const noexcept {
+    return config_.neuron_mix;
+}
+
+const agentari::neuron::NeuronMixAllocation&
+HierarchicalPredictionNetwork::neuron_mix_allocation() const noexcept {
+    return neuron_mix_allocation_;
 }
 
 PredictionNetworkState HierarchicalPredictionNetwork::state() const {

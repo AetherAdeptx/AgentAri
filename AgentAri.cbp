@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeBlocks_project_file>
+  <FileVersion major="1" minor="6"/>
+  <Project>
+    <Option title="AgentAri"/>
+    <Option makefile_is_custom="1"/>
+    <Option compiler="gcc"/>
+    <Option virtualFolders="CMake Files\;Headers\;Sources\;Tests\;Tools\;Shaders\;"/>
+    <Build>
+      <Target title="Core and tests">
+        <Option working_dir="$(PROJECT_DIR)"/>
+        <Option type="4"/>
+        <MakeCommands>
+          <Build command="cmake -S &quot;$(PROJECT_DIR)&quot; -B &quot;$(PROJECT_DIR)/build-codeblocks&quot; -G &quot;Unix Makefiles&quot; -DAGENTARI_BUILD_APP=OFF -DAGENTARI_ENABLE_VULKAN=OFF -DCMAKE_BUILD_TYPE=Debug &amp;&amp; cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --parallel"/>
+          <Clean command="cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target clean"/>
+          <DistClean command="cmake -S &quot;$(PROJECT_DIR)&quot; -B &quot;$(PROJECT_DIR)/build-codeblocks&quot; -G &quot;Unix Makefiles&quot; -DAGENTARI_BUILD_APP=OFF -DAGENTARI_ENABLE_VULKAN=OFF -DCMAKE_BUILD_TYPE=Debug &amp;&amp; cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target clean"/>
+        </MakeCommands>
+      </Target>
+      <Target title="Console">
+        <Option output="build-codeblocks/agentari-console" prefix_auto="0" extension_auto="0"/>
+        <Option working_dir="$(PROJECT_DIR)"/>
+        <Option type="1"/>
+        <MakeCommands>
+          <Build command="cmake -S &quot;$(PROJECT_DIR)&quot; -B &quot;$(PROJECT_DIR)/build-codeblocks&quot; -G &quot;Unix Makefiles&quot; -DAGENTARI_BUILD_APP=OFF -DAGENTARI_ENABLE_VULKAN=OFF -DCMAKE_BUILD_TYPE=Debug &amp;&amp; cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target agentari-console --parallel"/>
+          <Clean command="cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target clean"/>
+        </MakeCommands>
+      </Target>
+      <Target title="Run tests">
+        <Option working_dir="$(PROJECT_DIR)"/>
+        <Option type="4"/>
+        <MakeCommands>
+          <Build command="cmake -S &quot;$(PROJECT_DIR)&quot; -B &quot;$(PROJECT_DIR)/build-codeblocks&quot; -G &quot;Unix Makefiles&quot; -DAGENTARI_BUILD_APP=OFF -DAGENTARI_ENABLE_VULKAN=OFF -DCMAKE_BUILD_TYPE=Debug &amp;&amp; cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --parallel &amp;&amp; ctest --test-dir &quot;$(PROJECT_DIR)/build-codeblocks&quot; --output-on-failure"/>
+          <Clean command="cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target clean"/>
+        </MakeCommands>
+      </Target>
+      <Target title="SDL application">
+        <Option output="build-codeblocks/agent-ari" prefix_auto="0" extension_auto="0"/>
+        <Option working_dir="$(PROJECT_DIR)"/>
+        <Option type="1"/>
+        <MakeCommands>
+          <Build command="cmake -S &quot;$(PROJECT_DIR)&quot; -B &quot;$(PROJECT_DIR)/build-codeblocks&quot; -G &quot;Unix Makefiles&quot; -DAGENTARI_BUILD_APP=ON -DAGENTARI_ENABLE_VULKAN=ON -DCMAKE_BUILD_TYPE=Debug &amp;&amp; cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target agent-ari --parallel"/>
+          <Clean command="cmake --build &quot;$(PROJECT_DIR)/build-codeblocks&quot; --target clean"/>
+        </MakeCommands>
+      </Target>
+    </Build>
+    <Unit filename="CMakeLists.txt"><Option virtualFolder="CMake Files\"/></Unit>
+    <Unit filename="include/agentari/Agent.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/AgentWorker.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/AtomicTokenizer.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/BitPacking.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/ContextTokenizer.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Experience.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Hardware.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/HierarchicalPrediction.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/HierarchicalTokenizer.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Kernel.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Memory.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/NeuralNetwork.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Neuron.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/NeuronMix.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Parallel.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/RunLog.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/SdlWindow.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/SemanticPartLearner.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/SpatialNeuronMap.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/TeacherFeedback.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Tensor.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Tokenizer.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/TokenizerNeural.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/Tool.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/VulkanBackend.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="include/agentari/WordVocabulary.hpp"><Option virtualFolder="Headers\"/></Unit>
+    <Unit filename="src/Agent.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/AgentWorker.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/AtomicTokenizer.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/ContextTokenizer.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/Hardware.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/HierarchicalPrediction.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/HierarchicalTokenizer.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/Memory.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/NeuralNetwork.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/RunLog.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/SdlWindow.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/SemanticPartLearner.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/SpatialNeuronMap.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/TeacherFeedback.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/Tensor.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/Tokenizer.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/TokenizerNeural.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/Tool.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/VulkanBackend.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/WordVocabulary.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="src/main.cpp"><Option virtualFolder="Sources\"/></Unit>
+    <Unit filename="tests/AgentWorkerTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tests/HierarchicalPredictionTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tests/HierarchicalTokenizerTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tests/SystemTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tests/TensorTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tests/TokenizerTests.cpp"><Option virtualFolder="Tests\"/></Unit>
+    <Unit filename="tools/AgentAriConsole.cpp"><Option virtualFolder="Tools\"/></Unit>
+    <Unit filename="tools/AgentAriToy.cpp"><Option virtualFolder="Tools\"/></Unit>
+    <Unit filename="tools/HierarchicalPredictionDemo.cpp"><Option virtualFolder="Tools\"/></Unit>
+    <Unit filename="tools/TeacherFeedbackDemo.cpp"><Option virtualFolder="Tools\"/></Unit>
+    <Unit filename="tools/WordPredictorDemo.cpp"><Option virtualFolder="Tools\"/></Unit>
+    <Unit filename="shaders/elementwise.comp"><Option virtualFolder="Shaders\"/></Unit>
+    <Unit filename="shaders/matmul.comp"><Option virtualFolder="Shaders\"/></Unit>
+  </Project>
+</CodeBlocks_project_file>

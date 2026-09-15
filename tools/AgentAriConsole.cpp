@@ -838,6 +838,15 @@ private:
                   << " transition_neurons=" << total_transitions
                   << " learned_parts=" << tokenizer_.parts().size()
                   << " vocabulary=" << tokenizer_.words().size() << '\n';
+        const auto& mix = network_.neuron_mix_allocation();
+        std::cout << "  neuron mix:";
+        for (std::size_t index = 0U; index < mix.entry_count; ++index) {
+            const auto& entry = mix.entries[index];
+            std::cout << ' ' << agentari::neuron::neuron_type_name(entry.type) << '='
+                      << entry.neuron_count << '(' << entry.fill_percent << "%)";
+        }
+        std::cout << " assigned=" << mix.assigned_neurons
+                  << " unassigned=" << mix.unassigned_neurons << '\n';
         for (std::size_t index = 0U; index < state.layers.size(); ++index) {
             const auto& layer = state.layers[index];
             std::cout << "  " << std::setw(11) << std::left << layer_name(index)

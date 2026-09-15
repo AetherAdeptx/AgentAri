@@ -1,6 +1,8 @@
 #include "agentari/BitPacking.hpp"
 #include "agentari/Kernel.hpp"
+#include "agentari/HierarchicalPrediction.hpp"
 #include "agentari/Neuron.hpp"
+#include "agentari/NeuronMix.hpp"
 #include "agentari/Parallel.hpp"
 #include "agentari/RunLog.hpp"
 #include "agentari/System.hpp"
@@ -149,6 +151,42 @@ void configurable_neurons() {
             "sparse mixture neuron routing was invalid");
 }
 
+void configurable_neuron_mix() {
+    using agentari::neuron::NeuronMixConfig;
+    using agentari::neuron::NeuronType;
+
+    NeuronMixConfig partial;
+    partial.add(NeuronType::basic, 5.0F);
+    partial.add(NeuronType::modern_gated, 4.0F);
+    const auto partial_allocation = partial.allocate(1000U);
+    require(partial_allocation.entry_count == 2U &&
+                partial_allocation.entries[0U].neuron_count == 50U &&
+                partial_allocation.entries[1U].neuron_count == 40U &&
+                partial_allocation.assigned_neurons == 90U &&
+                partial_allocation.unassigned_neurons == 910U,
+            "partial neuron mix allocation did not preserve its remainder");
+
+    const auto complete_allocation =
+        agentari::neuron::default_neuron_mix().allocate(1000U);
+    require(complete_allocation.entry_count == 5U &&
+                complete_allocation.assigned_neurons == 1000U &&
+                complete_allocation.unassigned_neurons == 0U,
+            "complete neuron mix allocation did not consume the network budget");
+    require(agentari::neuron::neuron_type_name(NeuronType::sparse_modern) ==
+                "sparse_modern",
+            "neuron mix type name was not stable");
+
+    agentari::text::hierarchical::PredictionNetworkConfig network_config;
+    network_config.total_neuron_count = 1000U;
+    network_config.neurons_per_layer = 1U;
+    network_config.additional_layer_count = 0U;
+    network_config.min_neurons_per_layer = 1U;
+    network_config.neuron_mix = agentari::neuron::default_neuron_mix();
+    agentari::text::hierarchical::HierarchicalPredictionNetwork network(network_config);
+    require(network.neuron_mix_allocation().assigned_neurons == 1000U,
+            "prediction network did not load its neuron mix");
+}
+
 void scalable_cpu_matrix() {
     using namespace agentari::nn::kernel;
     F32CpuMatrix left(64U, 64U, 1.0F);
@@ -208,6 +246,7 @@ int main() {
         scalable_cpu_matrix();
         transient_run_log();
         configurable_neurons();
+        configurable_neuron_mix();
         std::cout << "agentari system tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
