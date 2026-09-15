@@ -1,5 +1,5 @@
-#include "firstagent/Tokenizer.hpp"
-#include "firstagent/Hardware.hpp"
+#include "agentari/Tokenizer.hpp"
+#include "agentari/Hardware.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -12,8 +12,8 @@ void print_usage(const char* program) {
 }
 
 std::filesystem::path project_file(const std::filesystem::path& relative) {
-#ifdef FIRSTAGENT_PROJECT_SOURCE_DIR
-    const std::filesystem::path source = std::filesystem::path(FIRSTAGENT_PROJECT_SOURCE_DIR) / relative;
+#ifdef AGENTARI_PROJECT_SOURCE_DIR
+    const std::filesystem::path source = std::filesystem::path(AGENTARI_PROJECT_SOURCE_DIR) / relative;
     if (std::filesystem::exists(source)) {
         return source;
     }
@@ -24,9 +24,9 @@ std::filesystem::path project_file(const std::filesystem::path& relative) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    using firstagent::text::LayeredTokenizer;
-    using firstagent::text::ContextSteering;
-    using firstagent::text::WordPredictor;
+    using agentari::text::LayeredTokenizer;
+    using agentari::text::ContextSteering;
+    using agentari::text::WordPredictor;
 
     std::filesystem::path training_path;
     std::string prompt = "the quick brown";
@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
               << tokenizer.vocabulary_capacity() << ", training-steps=" << predictor.training_steps()
               << ", active-model-words=" << predictor.active_vocabulary_size()
               << ", loss=" << predictor.last_loss()
-              << ", simd=" << firstagent::hardware::preferred_simd_backend()
+              << ", simd=" << agentari::hardware::preferred_simd_backend()
               << ", local=" << context.recent_words.size()
               << ", sampled-history=" << context.sampled_history_words.size()
               << ", frame-words=" << context.frame_words.size()

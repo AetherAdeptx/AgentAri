@@ -1,6 +1,6 @@
-#include "firstagent/NeuralNetwork.hpp"
-#include "firstagent/Kernel.hpp"
-#include "firstagent/VulkanBackend.hpp"
+#include "agentari/NeuralNetwork.hpp"
+#include "agentari/Kernel.hpp"
+#include "agentari/VulkanBackend.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -25,7 +25,7 @@ void require_near(float actual, float expected, float tolerance, const std::stri
 }
 
 void tensor_math_and_autograd() {
-    using namespace firstagent::nn;
+    using namespace agentari::nn;
     Tensor left({2U, 2U}, std::vector<float>{1.0F, 2.0F, 3.0F, 4.0F}, true);
     Tensor right({2U, 2U}, std::vector<float>{2.0F, 0.0F, 1.0F, 2.0F}, true);
     const Tensor product = matmul(left, right);
@@ -46,7 +46,7 @@ void tensor_math_and_autograd() {
 }
 
 void policy_matrix_components() {
-    using namespace firstagent::nn::kernel;
+    using namespace agentari::nn::kernel;
     F32CpuMatrix left(2U, 3U);
     left(0U, 0U) = 1.0F;
     left(0U, 1U) = 2.0F;
@@ -67,7 +67,7 @@ void policy_matrix_components() {
 }
 
 void normalization_and_attention() {
-    using namespace firstagent::nn;
+    using namespace agentari::nn;
     Tensor input({1U, 2U, 3U, 4U},
                  std::vector<float>{1.0F, 0.0F, 0.0F, 0.0F,
                                     0.0F, 1.0F, 0.0F, 0.0F,
@@ -89,7 +89,7 @@ void normalization_and_attention() {
 }
 
 void transformer_forward_backward_and_generation() {
-    using namespace firstagent::nn;
+    using namespace agentari::nn;
     TransformerConfig config;
     config.vocabulary_size = 16U;
     config.maximum_sequence_length = 16U;
@@ -142,8 +142,8 @@ void transformer_forward_backward_and_generation() {
 }
 
 void optional_vulkan_tensor_backend() {
-    using namespace firstagent::nn;
-    firstagent::gpu::VulkanComputeBackend gpu_backend;
+    using namespace agentari::nn;
+    agentari::gpu::VulkanComputeBackend gpu_backend;
     set_tensor_backend(TensorBackend::vulkan, &gpu_backend);
     Tensor left({16U, 16U}, 1.0F);
     Tensor right({16U, 16U}, 2.0F);
@@ -158,7 +158,7 @@ void optional_vulkan_tensor_backend() {
         const float gpu_left[4] = {1.0F, -2.0F, 3.0F, 4.0F};
         const float gpu_right[4] = {2.0F, 5.0F, -1.0F, 2.0F};
         float gpu_output[4]{};
-        require(gpu_backend.elementwise(firstagent::gpu::ElementwiseOperation::add,
+        require(gpu_backend.elementwise(agentari::gpu::ElementwiseOperation::add,
                                         gpu_left, gpu_right, 4U, gpu_output),
                 "Vulkan elementwise dispatch failed");
         require_near(gpu_output[0U], 3.0F, 1.0e-4F,
@@ -180,10 +180,10 @@ int main() {
         normalization_and_attention();
         transformer_forward_backward_and_generation();
         optional_vulkan_tensor_backend();
-        std::cout << "firstagent tensor tests passed\n";
+        std::cout << "agentari tensor tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
-        std::cerr << "firstagent tensor tests failed: " << exception.what() << '\n';
+        std::cerr << "agentari tensor tests failed: " << exception.what() << '\n';
         return EXIT_FAILURE;
     }
 }

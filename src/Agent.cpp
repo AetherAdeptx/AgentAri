@@ -1,13 +1,13 @@
-#include "firstagent/Agent.hpp"
+#include "agentari/Agent.hpp"
 
-#include "firstagent/Tokenizer.hpp"
+#include "agentari/Tokenizer.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <exception>
 #include <sstream>
 
-namespace firstagent {
+namespace agentari {
 namespace {
 
 std::string trim(std::string value) {
@@ -183,4 +183,4 @@ std::string Agent::observe(const std::string& input) {
     return response;
 }
 
-}  // namespace firstagent
+}  // namespace agentari

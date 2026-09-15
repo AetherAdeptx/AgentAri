@@ -1,7 +1,7 @@
 # Policy-based tensor kernels
 
 AgentAri now has a small compile-time kernel layer in
-`include/firstagent/Kernel.hpp`.
+`include/agentari/Kernel.hpp`.
 
 `kernel::Matrix<Scalar, Backend, Layout>` owns a runtime-sized matrix while
 its scalar type, backend policy, and storage layout are selected at compile
@@ -16,9 +16,9 @@ backends to specialize `BackendOperations<Backend, Scalar>`.
 
 CMake exposes the implementation boundaries as:
 
-- `firstagent-kernels-cpu`: header-only policy and view layer.
-- `firstagent-kernels-vulkan`: the optional Vulkan runtime backend.
-- `firstagent-nn`: autograd, Transformer, tokenizer, and model code linked to
+- `agentari-kernels-cpu`: header-only policy and view layer.
+- `agentari-kernels-vulkan`: the optional Vulkan runtime backend.
+- `agentari-nn`: autograd, Transformer, tokenizer, and model code linked to
   the selected backend targets.
 
 Dimensions and model configuration remain runtime values. Only choices that

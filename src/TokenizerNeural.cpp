@@ -1,8 +1,8 @@
-#include "firstagent/TokenizerNeural.hpp"
+#include "agentari/TokenizerNeural.hpp"
 
-#include "firstagent/BitPacking.hpp"
-#include "firstagent/Parallel.hpp"
-#include "firstagent/Tokenizer.hpp"
+#include "agentari/BitPacking.hpp"
+#include "agentari/Parallel.hpp"
+#include "agentari/Tokenizer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -17,7 +17,7 @@
 #include <string>
 #include <utility>
 
-namespace firstagent::text {
+namespace agentari::text {
 namespace {
 
 using FeatureVector = std::array<float, tokenizer_feature_count>;
@@ -686,4 +686,4 @@ bool TokenizerNeuralStack::load(std::istream& input, std::string& error) {
     return true;
 }
 
-}  // namespace firstagent::text
+}  // namespace agentari::text

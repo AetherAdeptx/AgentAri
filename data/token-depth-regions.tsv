@@ -1,4 +1,4 @@
-# FirstAgent token depth map, version 1
+# AgentAri token depth map, version 1
 #
 # This is a region policy, not a tokenizer implementation. Future tokenizers
 # should assign a token to one of these regions, then use depth and mobility

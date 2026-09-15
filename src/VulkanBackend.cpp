@@ -1,4 +1,4 @@
-#include "firstagent/VulkanBackend.hpp"
+#include "agentari/VulkanBackend.hpp"
 
 #include <cstring>
 #include <cstdint>
@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(FIRSTAGENT_HAS_VULKAN) && FIRSTAGENT_HAS_VULKAN
+#if defined(AGENTARI_HAS_VULKAN) && AGENTARI_HAS_VULKAN
 #include <vulkan/vulkan.h>
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -15,14 +15,14 @@
 #endif
 #endif
 
-namespace firstagent::gpu {
+namespace agentari::gpu {
 
 struct VulkanComputeBackend::Impl {
     bool available{false};
     std::string device_name;
     std::string error;
 
-#if defined(FIRSTAGENT_HAS_VULKAN) && FIRSTAGENT_HAS_VULKAN
+#if defined(AGENTARI_HAS_VULKAN) && AGENTARI_HAS_VULKAN
     VkInstance instance{VK_NULL_HANDLE};
     VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     VkDevice device{VK_NULL_HANDLE};
@@ -67,7 +67,7 @@ struct VulkanComputeBackend::Impl {
 #endif
 };
 
-#if defined(FIRSTAGENT_HAS_VULKAN) && FIRSTAGENT_HAS_VULKAN
+#if defined(AGENTARI_HAS_VULKAN) && AGENTARI_HAS_VULKAN
 namespace {
 
 bool check(VkResult result, const char* operation, std::string& error) {
@@ -160,13 +160,13 @@ bool make_buffer(VkPhysicalDevice physical_device,
 
 VulkanComputeBackend::VulkanComputeBackend(std::string shader_path)
     : implementation_(std::make_unique<Impl>()) {
-#if !defined(FIRSTAGENT_HAS_VULKAN) || !FIRSTAGENT_HAS_VULKAN
+#if !defined(AGENTARI_HAS_VULKAN) || !AGENTARI_HAS_VULKAN
     (void)shader_path;
     implementation_->error = "Vulkan support was not found at configure time";
 #else
     if (shader_path.empty()) {
-#ifdef FIRSTAGENT_VULKAN_SHADER_PATH
-        shader_path = FIRSTAGENT_VULKAN_SHADER_PATH;
+#ifdef AGENTARI_VULKAN_SHADER_PATH
+        shader_path = AGENTARI_VULKAN_SHADER_PATH;
 #endif
     }
     if (shader_path.empty()) {
@@ -179,8 +179,8 @@ VulkanComputeBackend::VulkanComputeBackend(std::string shader_path)
         return;
     }
     std::string elementwise_shader_path;
-#ifdef FIRSTAGENT_VULKAN_ELEMENTWISE_SHADER_PATH
-    elementwise_shader_path = FIRSTAGENT_VULKAN_ELEMENTWISE_SHADER_PATH;
+#ifdef AGENTARI_VULKAN_ELEMENTWISE_SHADER_PATH
+    elementwise_shader_path = AGENTARI_VULKAN_ELEMENTWISE_SHADER_PATH;
 #endif
     const std::vector<char> elementwise_shader = read_binary(elementwise_shader_path);
     if (elementwise_shader.empty()) {
@@ -379,7 +379,7 @@ bool VulkanComputeBackend::matmul(const float* left,
                                   const float* right,
                                   std::size_t columns,
                                   float* output) const {
-#if !defined(FIRSTAGENT_HAS_VULKAN) || !FIRSTAGENT_HAS_VULKAN
+#if !defined(AGENTARI_HAS_VULKAN) || !AGENTARI_HAS_VULKAN
     (void)left;
     (void)rows;
     (void)inner;
@@ -518,7 +518,7 @@ bool VulkanComputeBackend::elementwise(ElementwiseOperation operation,
                                        const float* right,
                                        std::size_t count,
                                        float* output) const {
-#if !defined(FIRSTAGENT_HAS_VULKAN) || !FIRSTAGENT_HAS_VULKAN
+#if !defined(AGENTARI_HAS_VULKAN) || !AGENTARI_HAS_VULKAN
     (void)operation;
     (void)left;
     (void)right;
@@ -634,9 +634,9 @@ bool VulkanComputeBackend::elementwise(ElementwiseOperation operation,
 #endif
 }
 
-}  // namespace firstagent::gpu
+}  // namespace agentari::gpu
 
-#if defined(FIRSTAGENT_HAS_VULKAN) && FIRSTAGENT_HAS_VULKAN
+#if defined(AGENTARI_HAS_VULKAN) && AGENTARI_HAS_VULKAN
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif

@@ -1,4 +1,4 @@
-#include "firstagent/Tokenizer.hpp"
+#include "agentari/Tokenizer.hpp"
 
 #include <cstdlib>
 #include <cmath>
@@ -17,7 +17,7 @@ void require(bool condition, const std::string& message) {
 }
 
 void layered_map_and_predictor() {
-    using namespace firstagent::text;
+    using namespace agentari::text;
 
     LayeredTokenizer tokenizer(TokenizerConfig{
         .ascii_base_capacity = 256U,
@@ -155,7 +155,7 @@ void layered_map_and_predictor() {
             "batched predictor evaluation loss is not finite");
 
     const std::filesystem::path checkpoint =
-        std::filesystem::temp_directory_path() / "firstagent-tokenizer-test.ckpt";
+        std::filesystem::temp_directory_path() / "agentari-tokenizer-test.ckpt";
     std::error_code remove_error;
     std::filesystem::remove(checkpoint, remove_error);
     std::string checkpoint_error;
@@ -200,10 +200,10 @@ void layered_map_and_predictor() {
 int main() {
     try {
         layered_map_and_predictor();
-        std::cout << "firstagent tokenizer tests passed\n";
+        std::cout << "agentari tokenizer tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
-        std::cerr << "firstagent tokenizer tests failed: " << exception.what() << '\n';
+        std::cerr << "agentari tokenizer tests failed: " << exception.what() << '\n';
         return EXIT_FAILURE;
     }
 }

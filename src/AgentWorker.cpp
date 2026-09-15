@@ -1,8 +1,8 @@
-#include "firstagent/AgentWorker.hpp"
+#include "agentari/AgentWorker.hpp"
 
 #include <exception>
 
-namespace firstagent {
+namespace agentari {
 
 AgentWorker::AgentWorker(Agent& agent, std::size_t maximum_pending)
     : agent_(agent), maximum_pending_(maximum_pending == 0U ? throw std::invalid_argument(
@@ -79,4 +79,4 @@ void AgentWorker::run(std::stop_token stop_token) {
     }
 }
 
-}  // namespace firstagent
+}  // namespace agentari

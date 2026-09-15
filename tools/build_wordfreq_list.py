@@ -51,7 +51,7 @@ def main() -> int:
 
     package_version = importlib.metadata.version("wordfreq")
     metadata = {
-        "format": "firstagent-ranked-word-list-v1",
+        "format": "agentari-ranked-word-list-v1",
         "language": "English",
         "word_count": len(selected),
         "selection": "Frequency-ranked wordfreq English list, filtered to lowercase ASCII words with optional internal apostrophes or hyphens.",

@@ -1,11 +1,13 @@
-#include "firstagent/Agent.hpp"
-#include "firstagent/AgentWorker.hpp"
-#include "firstagent/NeuralNetwork.hpp"
-#include "firstagent/Parallel.hpp"
-#include "firstagent/SdlWindow.hpp"
-#include "firstagent/System.hpp"
-#include "firstagent/Tokenizer.hpp"
-#include "firstagent/VulkanBackend.hpp"
+#include "agentari/Agent.hpp"
+#include "agentari/AgentWorker.hpp"
+#include "agentari/HierarchicalPrediction.hpp"
+#include "agentari/NeuralNetwork.hpp"
+#include "agentari/Parallel.hpp"
+#include "agentari/RunLog.hpp"
+#include "agentari/SdlWindow.hpp"
+#include "agentari/System.hpp"
+#include "agentari/Tokenizer.hpp"
+#include "agentari/VulkanBackend.hpp"
 
 #include <SDL3/SDL_main.h>
 
@@ -52,8 +54,8 @@ std::string repeat_text(const std::vector<std::string>& arguments) {
 }
 
 std::filesystem::path project_file(const std::filesystem::path& relative) {
-#ifdef FIRSTAGENT_PROJECT_SOURCE_DIR
-    const std::filesystem::path source = std::filesystem::path(FIRSTAGENT_PROJECT_SOURCE_DIR) / relative;
+#ifdef AGENTARI_PROJECT_SOURCE_DIR
+    const std::filesystem::path source = std::filesystem::path(AGENTARI_PROJECT_SOURCE_DIR) / relative;
     if (std::filesystem::exists(source)) {
         return source;
     }
@@ -61,19 +63,117 @@ std::filesystem::path project_file(const std::filesystem::path& relative) {
     return relative;
 }
 
+struct HierarchicalRuntime {
+    agentari::text::hierarchical::HierarchicalTokenizer tokenizer;
+    agentari::text::hierarchical::HierarchicalPredictionNetwork network;
+};
+
+agentari::text::hierarchical::PredictionNetworkConfig hierarchical_network_config() {
+    using namespace agentari::text::hierarchical;
+    PredictionNetworkConfig config;
+    config.total_neuron_count = 0U;
+    config.neurons_per_layer = 2000U;
+    config.additional_layer_count = 24U;
+    config.min_neurons_per_layer = Min_Neurons_Per_Layer;
+    return config;
+}
+
+HierarchicalRuntime start_hierarchical_runtime() {
+    using namespace agentari::text::hierarchical;
+
+    HierarchicalRuntime runtime{
+        .tokenizer = HierarchicalTokenizer(HierarchicalTokenizerConfig{
+            .parts = SemanticPartLearnerConfig{
+                .capacity = 1024U,
+                .minimum_part_length = 2U,
+                .maximum_part_length = 16U,
+                .minimum_distinct_words = 2U,
+                .context_radius = 2U,
+            },
+            .vocabulary_capacity = 100000U,
+            .context = ContextTokenizerConfig{.recent_word_limit = 256U},
+        }),
+        .network = HierarchicalPredictionNetwork(hierarchical_network_config()),
+    };
+    return runtime;
+}
+
+class RuntimeTestWorkspace {
+public:
+    explicit RuntimeTestWorkspace(const bool enabled) {
+        if (!enabled) {
+            return;
+        }
+        enabled_ = true;
+
+        std::error_code filesystem_error;
+        root_ = std::filesystem::temp_directory_path(filesystem_error);
+        if (filesystem_error) {
+            error_ = "could not find the temporary directory: " + filesystem_error.message();
+            root_.clear();
+            return;
+        }
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        root_ /= "agentari-runtime-test-" + std::to_string(stamp);
+        std::filesystem::create_directories(root_, filesystem_error);
+        if (filesystem_error) {
+            error_ = "could not create the temporary test workspace: " +
+                     filesystem_error.message();
+            root_.clear();
+            return;
+        }
+        owns_root_ = true;
+    }
+
+    ~RuntimeTestWorkspace() {
+        if (owns_root_) {
+            std::error_code filesystem_error;
+            std::filesystem::remove_all(root_, filesystem_error);
+        }
+    }
+
+    RuntimeTestWorkspace(const RuntimeTestWorkspace&) = delete;
+    RuntimeTestWorkspace& operator=(const RuntimeTestWorkspace&) = delete;
+
+    [[nodiscard]] bool ready() const noexcept {
+        return !enabled_ || (error_.empty() && !root_.empty());
+    }
+
+    [[nodiscard]] const std::string& error() const noexcept {
+        return error_;
+    }
+
+    [[nodiscard]] const std::filesystem::path& root() const noexcept {
+        return root_;
+    }
+
+    [[nodiscard]] std::filesystem::path file(const std::filesystem::path& relative) const {
+        return root_ / relative;
+    }
+
+private:
+    std::filesystem::path root_;
+    std::string error_;
+    bool enabled_{false};
+    bool owns_root_{false};
+};
+
 void print_usage(const char* program) {
     std::cout << "Usage: " << program << " [--memory PATH]\n"
               << "       " << program << " [--memory PATH] [--run-for-ms N]\n"
-              << "       " << program << " [--workers N] [--vulkan]\n"
+              << "       " << program << " --test [--run-for-ms N]\n"
+              << "       " << program << " [--workers N] [--log PATH] [--vulkan]\n"
               << "       " << program << " --nn-demo\n"
               << "       " << program << " --word-demo\n"
+              << "\n--test uses a temporary runtime workspace and removes it on shutdown.\n"
               << "\n--workers 0 selects usable logical CPUs minus two; a positive value overrides it.\n"
+              << "--log PATH removes the previous log at that exact path and starts a fresh transient log.\n"
               << "\nThe AI scheduler runs at a fixed 8 ms interval (125 Hz).\n";
 }
 
 int run_word_demo() {
-    using firstagent::text::LayeredTokenizer;
-    using firstagent::text::WordPredictor;
+    using agentari::text::LayeredTokenizer;
+    using agentari::text::WordPredictor;
 
     LayeredTokenizer tokenizer;
     std::string load_error;
@@ -115,10 +215,10 @@ int run_word_demo() {
 }
 
 int run_neural_demo() {
-    using firstagent::nn::AdamW;
-    using firstagent::nn::GenerationConfig;
-    using firstagent::nn::TransformerConfig;
-    using firstagent::nn::TransformerModel;
+    using agentari::nn::AdamW;
+    using agentari::nn::GenerationConfig;
+    using agentari::nn::TransformerConfig;
+    using agentari::nn::TransformerModel;
 
     TransformerConfig config;
     config.vocabulary_size = 16U;
@@ -142,7 +242,7 @@ int run_neural_demo() {
     for (std::size_t update = 0U; update < 12U; ++update) {
         const auto loss = model.loss(input, target);
         loss.backward();
-        firstagent::nn::clip_grad_norm(model.parameters(), 1.0F);
+        agentari::nn::clip_grad_norm(model.parameters(), 1.0F);
         optimizer.step();
         optimizer.zero_grad();
         if (update == 0U || update == 11U) {
@@ -171,7 +271,9 @@ int main(int argc, char* argv[]) {
     std::chrono::milliseconds run_for{0};
     bool neural_demo = false;
     bool word_demo = false;
+    bool test_mode = false;
     bool vulkan_requested = false;
+    std::filesystem::path log_path = "agentari-runtime.log";
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
         if (argument == "--memory" && index + 1 < argc) {
@@ -187,6 +289,8 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Invalid --run-for-ms value: " << exception.what() << '\n';
                 return 2;
             }
+        } else if (argument == "--test") {
+            test_mode = true;
         } else if (argument == "--workers" && index + 1 < argc) {
             try {
                 const std::string worker_argument = argv[++index];
@@ -194,12 +298,14 @@ int main(int argc, char* argv[]) {
                     throw std::invalid_argument("must be zero or positive");
                 }
                 const auto workers = std::stoull(worker_argument);
-                firstagent::parallel::set_default_worker_count(
+                agentari::parallel::set_default_worker_count(
                     static_cast<std::size_t>(workers));
             } catch (const std::exception& exception) {
                 std::cerr << "Invalid --workers value: " << exception.what() << '\n';
                 return 2;
             }
+        } else if (argument == "--log" && index + 1 < argc) {
+            log_path = argv[++index];
         } else if (argument == "--nn-demo") {
             neural_demo = true;
         } else if (argument == "--word-demo") {
@@ -216,18 +322,45 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    RuntimeTestWorkspace test_workspace(test_mode);
+    if (!test_workspace.ready()) {
+        std::cerr << "Unable to start test mode: " << test_workspace.error() << '\n';
+        return 2;
+    }
+    if (test_mode) {
+        memory_path = test_workspace.file("experiences.tsv");
+        std::cout << "Test mode: temporary runtime files in " << test_workspace.root()
+                  << " will be removed on deinit.\n";
+    }
+
+    agentari::diagnostics::RunLog run_log(log_path);
+    const agentari::system::CpuCapabilities startup_cpu =
+        agentari::system::cpu_capabilities();
+    run_log.info("startup executable=agent-ari test_mode=" +
+                 std::string(test_mode ? "true" : "false") +
+                 " requested_log=" + log_path.string() +
+                 " effective_workers=" +
+                 std::to_string(agentari::parallel::default_worker_count()) +
+                 " logical_processors=" +
+                 std::to_string(startup_cpu.topology.logical_processors) +
+                 " usable_processors=" +
+                 std::to_string(startup_cpu.topology.usable_processors) +
+                 " simd=" + agentari::system::simd_name(startup_cpu.simd));
+
     if (neural_demo) {
+        run_log.info("running neural demo");
         return run_neural_demo();
     }
     if (word_demo) {
+        run_log.info("running word demo");
         return run_word_demo();
     }
 
-    std::optional<firstagent::gpu::VulkanComputeBackend> gpu_backend;
+    std::optional<agentari::gpu::VulkanComputeBackend> gpu_backend;
     if (vulkan_requested) {
         gpu_backend.emplace();
         if (gpu_backend->available()) {
-            firstagent::nn::set_tensor_backend(firstagent::nn::TensorBackend::vulkan,
+            agentari::nn::set_tensor_backend(agentari::nn::TensorBackend::vulkan,
                                                &*gpu_backend);
             std::cout << "Tensor backend: Vulkan (" << gpu_backend->device_name() << ")\n";
         } else {
@@ -236,21 +369,22 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    firstagent::Memory memory(memory_path);
+    agentari::Memory memory(memory_path);
     std::string error;
     if (!memory.load(error)) {
+        run_log.error("failed to load memory: " + error);
         std::cerr << "Failed to load memory: " << error << '\n';
         return 1;
     }
 
-    firstagent::ToolRegistry tools;
+    agentari::ToolRegistry tools;
     if (!tools.register_tool({"time", "Return the local system time.", local_time}, error) ||
         !tools.register_tool({"repeat", "Return the supplied text.", repeat_text}, error)) {
         std::cerr << "Failed to register tool: " << error << '\n';
         return 1;
     }
 
-    firstagent::text::LayeredTokenizer tokenizer;
+    agentari::text::LayeredTokenizer tokenizer;
     (void)tokenizer.load_depth_map_file(project_file("data/token-depth-regions.tsv").string(), error);
     if (!tokenizer.load_primitive_file(project_file("data/word-building-rules.tsv").string(),
                                        2048U, error)) {
@@ -272,12 +406,12 @@ int main(int argc, char* argv[]) {
             (void)tokenizer.add_word(word);
         }
     }
-    firstagent::text::PredictorConfig predictor_config;
+    agentari::text::PredictorConfig predictor_config;
     predictor_config.maximum_context_words = 256U;
     predictor_config.maximum_sequence_length = 256U;
     predictor_config.model_vocabulary_limit = 8192U;
-    firstagent::text::WordPredictor predictor(tokenizer, predictor_config);
-    firstagent::text::ContextSteering context(tokenizer, firstagent::text::ContextSteeringConfig{
+    agentari::text::WordPredictor predictor(tokenizer, predictor_config);
+    agentari::text::ContextSteering context(tokenizer, agentari::text::ContextSteeringConfig{
         .local_window_words = 256U,
         .history_sample_count = 256U,
         .neighborhood_radius = 4U,
@@ -285,10 +419,12 @@ int main(int argc, char* argv[]) {
         .salient_words_per_frame = 8U,
         .retained_frame_count = 32U,
     });
-    firstagent::Agent agent(memory, tools, &predictor, &context);
-    firstagent::AgentWorker agent_worker(agent);
-    firstagent::SdlWindow window;
+    agentari::Agent agent(memory, tools, &predictor, &context);
+    agentari::AgentWorker agent_worker(agent);
+    HierarchicalRuntime hierarchical_runtime = start_hierarchical_runtime();
+    agentari::SdlWindow window;
     if (!window.open(error)) {
+        run_log.error("failed to open SDL window: " + error);
         std::cerr << "Failed to open runtime window: " << error << '\n';
         return 1;
     }
@@ -300,17 +436,29 @@ int main(int argc, char* argv[]) {
     auto next_ai_tick = start;
     auto next_render = start;
     std::deque<std::string> pending_commands;
-    const firstagent::system::CpuCapabilities capabilities =
-        firstagent::system::cpu_capabilities();
-    const firstagent::system::GpuCapabilities gpu_capabilities =
-        firstagent::system::gpu_capabilities();
+    const agentari::system::CpuCapabilities capabilities =
+        agentari::system::cpu_capabilities();
+    const agentari::system::GpuCapabilities gpu_capabilities =
+        agentari::system::gpu_capabilities();
     std::string status = "Learning worker ready (" +
-                         std::string(firstagent::system::simd_name(capabilities.simd)) +
+                         std::string(agentari::system::simd_name(capabilities.simd)) +
                          ", " + std::to_string(capabilities.topology.usable_processors) +
                          " usable CPU threads, " +
-                         std::to_string(firstagent::parallel::default_worker_count()) +
+                         std::to_string(agentari::parallel::default_worker_count()) +
                          " parallel workers, " +
                          std::to_string(gpu_capabilities.device_count) + " DRM GPU(s)).";
+    status += " Hierarchical network: " +
+              std::to_string(hierarchical_runtime.network.state().total_neuron_count) +
+              " neurons (fresh; checkpointing disabled).";
+    std::cout << "Hierarchical network: "
+              << hierarchical_runtime.network.state().total_neuron_count
+              << " neurons, spatial cells="
+              << hierarchical_runtime.network.spatial_map().occupied_cell_count()
+              << " (fresh start; checkpointing disabled)\n";
+    run_log.info("runtime ready hierarchical_neurons=" +
+                 std::to_string(hierarchical_runtime.network.state().total_neuron_count) +
+                 " spatial_cells=" +
+                 std::to_string(hierarchical_runtime.network.spatial_map().occupied_cell_count()));
     bool input_closed = false;
     bool running = true;
     std::uint64_t ai_ticks = 0;
@@ -338,8 +486,39 @@ int main(int argc, char* argv[]) {
                 pending_commands.pop_front();
                 if (command == "/quit") {
                     running = false;
-                } else if (!agent_worker.submit(command)) {
-                    status = "Agent queue is full; input was deferred.";
+                } else {
+                    if (!command.empty() && command.front() != '/') {
+                        const auto trace = hierarchical_runtime.network.train_step(
+                            hierarchical_runtime.tokenizer, command);
+                        status = "Online learner step " +
+                                 std::to_string(hierarchical_runtime.network.state().step) +
+                                 " updated from " + std::to_string(trace.words.size()) +
+                                 " words.";
+                        if (!trace.words.empty()) {
+                            const auto& last_word = trace.words.back();
+                            if (last_word.word !=
+                                agentari::text::hierarchical::WordVocabulary::unknown_id) {
+                                const auto predictions =
+                                    hierarchical_runtime.network.predict_next_word(
+                                        last_word.word, 1U);
+                                if (!predictions.empty() && !predictions.front().sequence_end) {
+                                    const std::string_view next_word =
+                                        hierarchical_runtime.tokenizer.words().text(
+                                            predictions.front().id);
+                                    if (!next_word.empty()) {
+                                        status += " Next learned word: " +
+                                                  std::string(next_word) + ".";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!agent_worker.submit(command)) {
+                        run_log.debug("agent worker queue full; command deferred");
+                        status = "Agent queue is full; input was deferred.";
+                    } else {
+                        run_log.debug("command submitted to agent worker");
+                    }
                 }
             }
             next_ai_tick += ai_period;
@@ -353,7 +532,7 @@ int main(int argc, char* argv[]) {
         const auto after_ai = Clock::now();
         if (after_ai >= next_render) {
             ++rendered_frames;
-            window.render(firstagent::WindowState{
+            window.render(agentari::WindowState{
                 .uptime = std::chrono::duration_cast<std::chrono::milliseconds>(after_ai - start),
                 .ai_ticks = ai_ticks,
                 .rendered_frames = rendered_frames,
@@ -387,5 +566,8 @@ int main(int argc, char* argv[]) {
               << ", rendered frames: " << rendered_frames
               << ", elapsed: " << elapsed.count() << " ms"
               << ", experiences stored: " << memory.size() << '\n';
+    run_log.info("shutdown ai_ticks=" + std::to_string(ai_ticks) +
+                 " rendered_frames=" + std::to_string(rendered_frames) +
+                 " experiences=" + std::to_string(memory.size()));
     return 0;
 }

@@ -1,4 +1,4 @@
-#include "firstagent/Tokenizer.hpp"
+#include "agentari/Tokenizer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace firstagent::text {
+namespace agentari::text {
 namespace {
 
 constexpr std::size_t minimum_ascii_capacity = 256U;
@@ -1484,4 +1484,4 @@ std::size_t WordPredictor::maximum_context_words() const noexcept {
     return std::min(config_.maximum_context_words, config_.maximum_sequence_length);
 }
 
-}  // namespace firstagent::text
+}  // namespace agentari::text

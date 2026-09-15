@@ -1,0 +1,394 @@
+AgentAri Development Notes v1
+==============================
+
+Date of this note: 2026-09-14
+
+Project identity
+----------------
+
+AgentAri is an experimental, from-scratch C++ AI and agent prototype for
+Linux. It was created collaboratively with ChatGPT Luna and has not been
+tested extensively. It is research code, not a production LLM or a claim of
+general intelligence. Interfaces and experiments are expected to change.
+
+The main source tree is intended to stay readable and modular. Build
+directories, downloaded data, and machine-specific dependency caches are not
+part of the source design.
+
+Runtime foundation
+------------------
+
+The application uses C++20, SDL3 for the cross-platform window/event layer,
+and an 8 ms AI tick (125 Hz) alongside a roughly 16 ms rendering cadence.
+The SDL loop owns event processing and rendering. Agent work is dispatched to
+an asynchronous worker so model/tool work does not block the rendering path.
+
+Raylib is retained as a future experiment, but SDL is the active application
+backend. The project uses open, portable compute interfaces where practical:
+CPU reference execution is primary, Vulkan compute is optional, and CUDA is
+not a project dependency.
+
+Hardware and parallel execution
+--------------------------------
+
+The project has CPU capability, cache-line, SIMD, bit-packing, alignment,
+affinity, and parallel scheduling utilities. The default worker policy uses
+two fewer usable logical CPUs than the detected affinity set, with a
+configuration override. The code is designed to scale across different
+logical-core counts without assuming one machine topology.
+
+The neural/tensor path includes contiguous row-major tensors, reverse-mode
+autodiff, matrix operations, softmax and cross-entropy, embeddings, RMSNorm,
+RoPE, causal attention, grouped-query attention, SwiGLU, residual paths,
+AdamW, gradient clipping, and incremental KV-cache generation. A small
+decoder-only Transformer scaffold exists, but it is not pretrained and does
+not yet have a complete production training system.
+
+Neuron templates and storage
+----------------------------
+
+Neuron.hpp provides compile-time-sized adaptive neurons. Feature policies can
+enable or remove recurrent state, message feedback, gates, residual mixing,
+normalization, and eligibility traces. Storage policies include aligned FP32,
+int8, and one-bit sign weights. Presets include basic, modern gated, compact
+modern, binary inference, and sparse/top-k mixture-of-experts styles. These
+are configurable functional/vectorized units, not simulated biological cells.
+
+BitPacking.hpp and related alignment classes support compact categorical and
+state storage. They are intended for hot arrays where the memory reduction is
+worth the decode cost. The project keeps an unpacked option for performance
+critical paths.
+
+Tokenizer architecture
+-----------------------
+
+The experimental tokenizer is separate from the older five-layer tokenizer.
+Its current research layers are:
+
+  1. Atomic characters, punctuation, numbers, whitespace, and other bytes.
+  2. Learned contiguous word parts discovered from repeated whole words.
+  3. Whole-word vocabulary entries with IDs, counts, and optional frequency
+     ranks.
+  4. Context state over whole-word IDs, currently bounded and bigram-based.
+
+The part learner begins empty. It does not load a morphology table as its
+normal operation. It searches contiguous spans, promotes reusable spans that
+occur across distinct words, keeps atomic fallbacks, and records neighboring
+word evidence. Its contextual and compositionality scores are inspectable
+heuristics, not a finished semantic theory.
+
+Prediction network
+------------------
+
+HierarchicalPredictionNetwork currently learns four sparse association
+families:
+
+  character -> next character
+  learned part -> next learned part or atomic fallback
+  word -> next word
+  current word -> word immediately to its left (reverse context baseline)
+
+Each association stores a count, bounded weight, and activation. The current
+runtime keeps this state in memory only; checkpoint serialization remains
+disabled while this sparse association scaffold is being tested and is not yet
+equivalent to a dense trained Transformer.
+
+Thread-local learning deltas
+----------------------------
+
+`PredictionLearningDelta` is the first explicit thread-local learning path.
+For a sufficiently large `observe_batch`, each active worker owns one
+persistent delta vector. It reads immutable token traces, appends character,
+part, word, and reverse-context transition evidence, and coalesces repeated
+keys locally. No worker writes the shared transition tables or layer counters.
+The network then applies the completed deltas in worker-index order on its
+owning thread. This makes the batch result deterministic and avoids a lock or
+an unordered-map race around each association update. Coalesced counts use the
+closed form of the existing bounded learning and activation recurrences, so a
+large repeated batch does not replay a loop for every event.
+
+`collect_learning_delta` clears and fills a caller-owned delta for standalone
+inspection; the internal append operation is used when a worker accumulates
+many traces. The online single-trace path remains ordered because tokenizer
+vocabulary insertion, semantic-part promotion, context history, and teacher
+feedback are order-sensitive. This is deliberate: only read-only evidence is
+parallelized until those mutable tokenizer states have their own explicit
+delta/commit protocol.
+
+Global neuron allocation
+------------------------
+
+One PredictionNetworkConfig::total_neuron_count controls all tokenizer and
+additional layer banks. A zero total derives the budget from
+`neurons_per_layer * (4 + additional_layer_count)`. The current default is 24
+additional layers, 28 total layers, and 2,000 neurons per layer, for a total
+of 56,000 neurons. The four tokenizer layers and additional layers can still
+be rescaled with their configurable relative weights.
+
+The allocator first gives every layer
+PredictionNetworkConfig::min_neurons_per_layer. The project-wide default is
+the named constant Min_Neurons_Per_Layer, currently 1. The remaining budget is
+distributed proportionally by the layer weights. Integer remainders are
+assigned exactly once in a symmetric outside-in order, and the resulting
+layer counts always sum to the requested global budget.
+
+Within each allocated layer:
+
+  15 percent is local input capacity.
+  85 percent is outer/network-reference capacity.
+  10 percent of the outer bank currently receives active cross-layer feedback.
+
+The 10 percent active-feedback subset is intentionally smaller than the full
+outer bank. The rest is reserved for future network-wide references rather
+than being falsely treated as fully connected learning today.
+
+Three-dimensional spatial neuron map
+-------------------------------------
+
+SpatialNeuronMap gives every allocated bank neuron a searchable coordinate in
+a fixed 128 x 128 x 128 grid. The grid has 2,097,152 cells. Its dense cell
+index makes coordinate lookup cheap while each cell stores a linked bucket of
+neuron IDs, so a cell can hold a variable number of neurons for future
+compressed or over-subscribed layouts. Each neuron also stores a packed 64-bit
+position handle: 16 bits each for X, Y, and Z, plus 16 reserved color bits.
+
+Layer placement starts near the center. Layer anchors use a 3D Fibonacci
+ sphere-style distribution: golden-angle azimuth, Fibonacci-derived radial
+spacing, and an elevation spread across the cube. Neuron tiles are centered
+around their layer anchor. Coordinates use a reflection/bounce function at the
+128-wide boundary rather than wrapping around.
+
+If a preferred coordinate is occupied, placement first rotates left by the
+golden angle while expanding a 3D probe radius. If that readable geometric
+probe cannot find a free cell, a deterministic full-grid fallback guarantees
+that the allocator either finds a free cell or reports that the grid is full.
+
+The spatial map exposes:
+
+  smart_search(query): nearest-first materialized results;
+  lazy_search(query, visitor): callback-based traversal with no result vector;
+  find(id): direct neuron-ID lookup;
+  find(coordinate): direct occupancy lookup;
+  layer and neuron lists for inspection.
+
+This geometry is an organizational and locality experiment. Coordinates are
+not yet used to alter weights, attention, memory placement, or semantic
+meaning. Physical closeness in this map is not currently physical RAM
+closeness; that would require a separate allocator and measurement work.
+
+What “active neurons” means in modern networks
+----------------------------------------------
+
+The labels 0.8B, 2B, 4B, 8B, and 16B normally refer to trainable parameter
+counts, not a universal neuron count. Transformer implementations do not have
+one standardized neuron definition. In a dense model, nearly all MLP and
+attention channels for every layer are evaluated for each token, even if some
+activation values are small. In an MoE model, only the routed experts are
+active per token, so active compute can be much lower than total parameters.
+
+As a rough dense-model orientation, counting only intermediate MLP channels
+across all layers commonly gives an order of magnitude like:
+
+  0.8B parameters: roughly 100,000 to 160,000 MLP channels
+  2B parameters:   roughly 200,000 to 320,000 MLP channels
+  4B parameters:   roughly 300,000 to 450,000 MLP channels
+  8B parameters:   roughly 400,000 to 600,000 MLP channels
+  16B parameters:  roughly 550,000 to 900,000 MLP channels
+
+These are architecture-dependent orientation numbers, not exact counts. If
+attention projection channels, residual streams, or every scalar activation
+is counted, the number changes substantially. For dense inference, it is more
+accurate to say the model evaluates essentially 100 percent of its layer
+blocks per token. For MoE, the useful number is the chosen top-k expert
+fraction plus shared layers, not the total parameter label.
+
+Current tests and verification
+------------------------------
+
+The configured hierarchical build is:
+
+  cmake -S . -B build-hierarchical \
+    -DAGENTARI_BUILD_APP=OFF \
+    -DAGENTARI_ENABLE_VULKAN=OFF \
+    -DCMAKE_BUILD_TYPE=Debug
+  cmake --build build-hierarchical --parallel 2
+  ctest --test-dir build-hierarchical --output-on-failure
+
+The current suite has six passing tests, including tensor, tokenizer,
+hierarchical tokenizer, hierarchical prediction/spatial map, system, and
+agent-worker tests. The spatial test uses a 10,000-neuron global budget and a
+16-neuron minimum floor to verify exact scaling, spatial allocation, direct
+lookup, smart nearest search, and bounded lazy search.
+
+Executable 56k network startup
+------------------------------
+
+The main agent-ari executable now constructs a 56,000-neuron hierarchical
+prediction network at startup: the four tokenizer-prediction layers plus 24
+additional layers, with 2,000 neurons in each layer. It allocates all layer
+banks and their 128 cubed spatial coordinates every time it launches. Plain
+non-command input from the runtime is observed by the hierarchical tokenizer
+and prediction network.
+
+Checkpoint loading and saving are intentionally disabled while the primitive
+layers are still being designed. Any older checkpoint at
+
+  data/agentari-hierarchical-network-8k.bin
+
+is left untouched and ignored. Every run therefore starts with fresh neuron
+weights, activations, transition associations, tokenizer parts, and context.
+
+The executable also supports `--test`. Test mode redirects the runtime memory
+file into a uniquely named temporary workspace and removes that entire
+workspace in the RAII destructor during deinit, including files created after
+startup. This keeps repeatable smoke tests from modifying project data. Normal
+launches retain the configured memory path; test cleanup is opt-in so existing
+user memories are not deleted.
+
+The runtime smoke check is:
+
+  toolbox run --container agentari-dev bash -lc \
+    'cd /var/home/Ari/Codex/AI/Projects/AgentAri && \
+     SDL_VIDEODRIVER=dummy ./build-agent/agent-ari --test --run-for-ms 200'
+
+Repeated test runs report a 56,000-neuron network and `fresh start;
+checkpointing disabled`. The temporary test workspace is removed when the
+process exits.
+
+Known limitations and next experiments
+---------------------------------------
+
+  * The part learner is a repeated-span learner, not a complete semantic
+    parser or exception grammar.
+  * The context predictor is currently a reverse word bigram baseline.
+  * Transition associations have a separate sparse capacity limit from the
+    dense routing-bank budget.
+  * The 128 cubed coordinate map is an inspectable model-space abstraction;
+    it does not control host memory placement.
+  * Dense Transformer training still needs proper batching, validation,
+    mixed precision, distributed execution, and measured GPU kernels.
+  * No claim should be made that the present prototype understands language or
+    has discovered natural semantic geometry.
+
+The next useful spatial experiment is to export layer coordinates and learned
+association strengths, then compare local versus distant transition quality
+before allowing geometry to influence routing or memory placement.
+
+Online training experiment
+--------------------------
+
+Checkpointing remains disabled by design for this phase. The hierarchical
+network now exposes `train_step(tokenizer, text)`, which observes the text,
+updates the tokenizer, routes the current activation through all 28 layers, and
+learns character, part, word, and reverse-context associations before returning
+the trace. The interactive runtime calls this path for each non-command input,
+so using AgentAri also trains the in-memory prototype.
+
+Sequence-start and sequence-end associations are reserved separately from the
+256 atomic ASCII IDs and ordinary part/word IDs. This permits first-token
+queries from `sequence_begin_id` and clean generation stopping at an end
+candidate. The standalone `agentari-hierarchical-demo` accepts a text file,
+pass count, and prompt, and reports predictions immediately after training.
+
+Frozen-teacher feedback experiment
+-----------------------------------
+
+The first judge bridge is intentionally separate from the tokenizer and does
+not fine-tune the small judge model. `TeacherFeedbackTrainer` accepts a prompt
+trace, an AgentAri candidate, and five bounded values: segmentation quality,
+semantic quality, grammar quality, context relevance, and judge confidence.
+It clamps every value to [0, 1]. Existing association neurons receive a small
+bounded teacher bias, and learned part candidates receive inspectable teacher
+support. Feedback alone cannot allocate a transition or invent a semantic
+part.
+
+When quality and confidence both pass configurable thresholds, the candidate
+and optional corrected text are observed as positive AgentAri examples. This
+is the important distinction from fine-tuning: the external Qwen/SmolLM
+model is inference-only and frozen; only the in-memory AgentAri tokenizer and
+association predictor learn.
+
+`tools/build_teacher_requests.py` extracts prompt/assistant pairs from the
+English OpenAssistant JSONL dump. `tools/qwen_teacher_judge.py` loads a local
+Transformers-format model with `local_files_only=True`, `eval()`, disabled
+gradients, and deterministic decoding. It emits controlled JSONL. The
+`agentari-teacher-demo` executable consumes that output. The C++ consumer's
+JSON reader intentionally handles only this controlled schema and should be
+replaced with a full parser before accepting arbitrary untrusted JSON.
+
+Transient diagnostics and CPU workers
+-------------------------------------
+
+The shared `agentari::diagnostics::RunLog` utility implements the current
+debug workflow. Opening a log removes only the exact previous file path and
+creates a fresh file; startup, progress, errors, and shutdown are recorded.
+The training and runtime executables use it by default, and `--log PATH`
+selects another exact path. Preserve a run before restarting by copying the
+file elsewhere. `--workers 0` selects usable logical processors minus two,
+and `--workers N` selects an explicit cap. Hierarchical token analysis now
+uses the affinity-aware parallel scheduler for its read-only per-word work,
+while online tokenizer/network mutations remain ordered and deterministic.
+The scheduler keeps its worker threads alive for the process lifetime, and
+the network reuses route, feedback, and per-worker learning-delta scratch
+buffers between records and batches.
+Teacher logs include both the valid record number and source line number.
+
+Optimization and 500-record retry
+---------------------------------
+
+The first 1,000-record consumer was stopped after becoming a one-core CPU
+bound run. A stack sample identified repeated full-bank semantic-part refreshes
+inside teacher feedback. The optimization pass made semantic analysis use a
+first-byte part index, made the learner's normalization/candidate/eligibility
+buffers persistent, refreshed only feedback-touched parts, and retained the
+existing ordered mutation boundary. The teacher acceptance defaults were
+tightened from 0.72 overall / 0.65 confidence to 0.86 overall / 0.90
+confidence. These changes preserve candidate evidence; they remove repeated
+computation and reduce low-confidence positive updates.
+
+The fresh retry used the restored feedback input as read-only source and wrote
+its transient log to:
+
+  /var/mnt/Storage/AI-Data/AgentAri/TrainingRuns/teacher-pilot-500-20260914
+
+It processed 500 records in approximately 34 seconds with `--workers 0`
+(10 usable workers plus the owner thread) and a 56,000-neuron network. There
+were zero malformed records, 397 accepted positive candidates, zero corrections,
+897 network steps, 6,373 vocabulary entries, and 1,024 learned parts. The log
+contains 500 record starts, 500 completions, and 500 neuron snapshots. The
+source request/feedback files remain separate from this new output directory.
+
+Verification for this addition: the C++ build succeeds, all six tests pass,
+the positive/negative feedback contract passes, the two-record fixture learns
+two accepted candidates and two corrections, and the request adapter emitted
+three valid pairs from the actual OASST dump. The Panda contains a Qwen3-0.6B
+Transformers directory, but Panda is storage-only and was not used for
+inference. The MSI's local Ollama Qwen3.5 0.8B model reported 873,438,784
+parameters and successfully judged the two-record fixture; both records
+produced valid feedback and were consumed by the C++ trainer. Both judge
+adapters enforce a strict below-one-billion-parameter limit.
+
+SSH console
+-----------
+
+`agentari-console` is an SDL-free interactive terminal executable for the
+current hierarchical tokenizer and prediction network. It defaults to the
+four tokenizer layers plus 24 outer layers, 56,000 total neurons, 100,000
+vocabulary capacity, 1,024 learned-part capacity, and 256 retained context
+words. The default session is fresh, but each learned record and feedback
+event is appended immediately to `agentari-console-state.txt`. Normal startup
+deletes only that exact state path; `--resume-state` bypasses deletion and
+replays the event journal to reconstruct tokenizer IDs, learned parts, context,
+and prediction weights. `--state PATH` selects another state file. This is
+deliberately a readable replay journal rather than a binary checkpoint, so
+resume time grows with the amount of training data. `--neurons N`, `--workers
+N`, `--log PATH`, and `--no-prompt` support SSH and scripted runs. The commands
+`/learn`, `/predict`, `/inspect`, `/feedback`, `/state`, and `/context` expose
+the current experimental behavior. Plain input is treated as an immediate
+learning record. The console writes a transient log through `RunLog`, so only
+the exact configured log path is removed and recreated at startup.
+
+The `/predict` command requests up to 64 learned next-word candidates. In a
+real TTY it opens a raw-mode alternate-screen picker: Up/Down and `w`/`s` move,
+Tab advances, Enter selects, and Esc or `q` cancels. Piped and `--no-prompt`
+runs print the list without raw-terminal input, so automation cannot hang.

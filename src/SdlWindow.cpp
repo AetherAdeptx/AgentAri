@@ -1,4 +1,4 @@
-#include "firstagent/SdlWindow.hpp"
+#include "agentari/SdlWindow.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,7 +6,7 @@
 
 #include <SDL3/SDL.h>
 
-namespace firstagent {
+namespace agentari {
 namespace {
 
 void set_color(SDL_Renderer* renderer, SDL_Color color) {
@@ -209,4 +209,4 @@ void SdlWindow::render(const WindowState& state) {
     SDL_SetWindowTitle(window_, title.str().c_str());
 }
 
-}  // namespace firstagent
+}  // namespace agentari

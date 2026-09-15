@@ -1,5 +1,5 @@
-#include "firstagent/AgentWorker.hpp"
-#include "firstagent/Tokenizer.hpp"
+#include "agentari/AgentWorker.hpp"
+#include "agentari/Tokenizer.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -21,15 +21,15 @@ void require(bool condition, const std::string& message) {
 
 int main() {
     const std::filesystem::path memory_path =
-        std::filesystem::temp_directory_path() / "firstagent-agent-worker-test.tsv";
+        std::filesystem::temp_directory_path() / "agentari-agent-worker-test.tsv";
     std::error_code filesystem_error;
     std::filesystem::remove(memory_path, filesystem_error);
     try {
-        firstagent::Memory memory(memory_path);
+        agentari::Memory memory(memory_path);
         std::string error;
         require(memory.load(error), "worker test memory failed to load: " + error);
-        firstagent::ToolRegistry tools;
-        firstagent::text::LayeredTokenizer tokenizer(firstagent::text::TokenizerConfig{
+        agentari::ToolRegistry tools;
+        agentari::text::LayeredTokenizer tokenizer(agentari::text::TokenizerConfig{
             .ascii_base_capacity = 256U,
             .ascii_expansion_capacity = 256U,
             .primitive_rule_capacity = 2U,
@@ -40,7 +40,7 @@ int main() {
         (void)tokenizer.add_word("quick", 2U);
         (void)tokenizer.add_word("brown", 3U);
         (void)tokenizer.add_word("fox", 4U);
-        firstagent::text::PredictorConfig predictor_config;
+        agentari::text::PredictorConfig predictor_config;
         predictor_config.maximum_context_words = 3U;
         predictor_config.model_vocabulary_limit = 8U;
         predictor_config.model_dimension = 16U;
@@ -50,9 +50,9 @@ int main() {
         predictor_config.feed_forward_dimension = 32U;
         predictor_config.maximum_sequence_length = 16U;
         predictor_config.weight_decay = 0.0F;
-        firstagent::text::WordPredictor predictor(tokenizer, predictor_config);
-        firstagent::text::ContextSteering context(tokenizer,
-                                                   firstagent::text::ContextSteeringConfig{
+        agentari::text::WordPredictor predictor(tokenizer, predictor_config);
+        agentari::text::ContextSteering context(tokenizer,
+                                                   agentari::text::ContextSteeringConfig{
                                                        .local_window_words = 3U,
                                                        .history_sample_count = 4U,
                                                        .neighborhood_radius = 1U,
@@ -60,11 +60,11 @@ int main() {
                                                        .salient_words_per_frame = 2U,
                                                        .retained_frame_count = 2U,
                                                    });
-        firstagent::Agent agent(memory, tools, &predictor, &context);
-        firstagent::AgentWorker worker(agent, 2U);
+        agentari::Agent agent(memory, tools, &predictor, &context);
+        agentari::AgentWorker worker(agent, 2U);
         require(worker.submit("/remember background fact"), "worker rejected first request");
 
-        std::optional<firstagent::AgentWorker::Result> result;
+        std::optional<agentari::AgentWorker::Result> result;
         for (std::size_t attempt = 0U; attempt < 200U && !result; ++attempt) {
             result = worker.poll();
             if (!result) {
@@ -89,11 +89,11 @@ int main() {
                 "predictor worker response lost the original input");
         require(memory.size() == 2U, "predictor worker did not persist observation");
         std::filesystem::remove(memory_path, filesystem_error);
-        std::cout << "firstagent agent worker tests passed\n";
+        std::cout << "agentari agent worker tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
         std::filesystem::remove(memory_path, filesystem_error);
-        std::cerr << "firstagent agent worker tests failed: " << exception.what() << '\n';
+        std::cerr << "agentari agent worker tests failed: " << exception.what() << '\n';
         return EXIT_FAILURE;
     }
 }

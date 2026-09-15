@@ -1,5 +1,5 @@
-#include "firstagent/NeuralNetwork.hpp"
-#include "firstagent/Parallel.hpp"
+#include "agentari/NeuralNetwork.hpp"
+#include "agentari/Parallel.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace firstagent::nn {
+namespace agentari::nn {
 namespace {
 
 std::uint64_t mix_seed(std::uint64_t seed, std::uint64_t salt) {
@@ -519,4 +519,4 @@ void AdamW::load_state(State state) {
     second_moment_ = std::move(state.second_moment);
 }
 
-}  // namespace firstagent::nn
+}  // namespace agentari::nn

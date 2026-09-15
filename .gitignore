@@ -1,6 +1,8 @@
 /build/
 /build-*/
 /data/*.tmp
+/data/agentari-hierarchical-network-8k.bin
 /third_party/
+*.log
 __pycache__/
 *.pyc

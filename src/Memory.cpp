@@ -1,11 +1,11 @@
-#include "firstagent/Memory.hpp"
+#include "agentari/Memory.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <sstream>
 
-namespace firstagent {
+namespace agentari {
 
 Memory::Memory(std::filesystem::path storage_path)
     : storage_path_(std::move(storage_path)) {}
@@ -184,4 +184,4 @@ std::vector<std::string> Memory::split_record(const std::string& line) {
     return fields;
 }
 
-}  // namespace firstagent
+}  // namespace agentari

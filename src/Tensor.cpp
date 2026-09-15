@@ -1,8 +1,8 @@
-#include "firstagent/Tensor.hpp"
-#include "firstagent/Kernel.hpp"
-#include "firstagent/Parallel.hpp"
-#include "firstagent/System.hpp"
-#include "firstagent/VulkanBackend.hpp"
+#include "agentari/Tensor.hpp"
+#include "agentari/Kernel.hpp"
+#include "agentari/Parallel.hpp"
+#include "agentari/System.hpp"
+#include "agentari/VulkanBackend.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -20,7 +20,7 @@
 #include <immintrin.h>
 #endif
 
-namespace firstagent::nn {
+namespace agentari::nn {
 namespace {
 
 thread_local bool gradients_enabled_state = true;
@@ -52,8 +52,8 @@ float dot_product_avx2_fma(const float* left, const float* right, std::size_t co
 float dot_product(const float* left, const float* right, std::size_t count) noexcept {
 #if defined(__x86_64__) || defined(__i386__)
 #if defined(__GNUC__) || defined(__clang__)
-    if (firstagent::system::cpu_capabilities().avx2 &&
-        firstagent::system::cpu_capabilities().fma) {
+    if (agentari::system::cpu_capabilities().avx2 &&
+        agentari::system::cpu_capabilities().fma) {
         return dot_product_avx2_fma(left, right, count);
     }
 #endif
@@ -1484,4 +1484,4 @@ void clip_grad_norm(const std::vector<Tensor*>& parameters, float maximum_norm) 
     }, parallel_config);
 }
 
-}  // namespace firstagent::nn
+}  // namespace agentari::nn

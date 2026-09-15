@@ -1,12 +1,17 @@
-#include "firstagent/BitPacking.hpp"
-#include "firstagent/Kernel.hpp"
-#include "firstagent/Neuron.hpp"
-#include "firstagent/Parallel.hpp"
-#include "firstagent/System.hpp"
+#include "agentari/BitPacking.hpp"
+#include "agentari/Kernel.hpp"
+#include "agentari/Neuron.hpp"
+#include "agentari/Parallel.hpp"
+#include "agentari/RunLog.hpp"
+#include "agentari/System.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -23,7 +28,7 @@ void require(bool condition, const std::string& message) {
 }
 
 void bit_packing_round_trip() {
-    using namespace firstagent::bits;
+    using namespace agentari::bits;
     require(align_up(0U, 64U) == 0U, "zero alignment mismatch");
     require(align_up(65U, 64U) == 128U, "cache-line alignment mismatch");
     require(bits_required(0U) == 1U && bits_required(255U) == 8U,
@@ -64,8 +69,8 @@ void bit_packing_round_trip() {
 }
 
 void topology_and_parallel_execution() {
-    const firstagent::system::CpuCapabilities capabilities =
-        firstagent::system::detect_cpu_capabilities();
+    const agentari::system::CpuCapabilities capabilities =
+        agentari::system::detect_cpu_capabilities();
     require(capabilities.topology.logical_processors >= 1U,
             "CPU detector returned no logical processors");
     require(capabilities.topology.physical_processors >= 1U,
@@ -73,39 +78,43 @@ void topology_and_parallel_execution() {
     require(capabilities.topology.usable_processors >= 1U &&
                 capabilities.topology.usable_processors <= capabilities.topology.logical_processors,
             "CPU affinity detector returned an invalid usable count");
-    require(std::string(firstagent::system::simd_name(capabilities.simd)).size() > 0U,
+    require(std::string(agentari::system::simd_name(capabilities.simd)).size() > 0U,
             "SIMD detector returned an empty name");
-    const std::size_t automatic_workers = firstagent::parallel::automatic_worker_count();
+    const std::size_t automatic_workers = agentari::parallel::automatic_worker_count();
     require(automatic_workers >= 1U &&
                 automatic_workers <= capabilities.topology.usable_processors,
             "automatic worker policy returned an invalid count");
-    firstagent::parallel::set_default_worker_count(2U);
-    require(firstagent::parallel::default_worker_count() <= 2U,
+    agentari::parallel::set_default_worker_count(2U);
+    require(agentari::parallel::default_worker_count() <= 2U,
             "configurable worker policy was not applied");
-    firstagent::parallel::set_default_worker_count(0U);
-    const firstagent::system::GpuCapabilities gpu =
-        firstagent::system::detect_gpu_capabilities();
+    agentari::parallel::set_default_worker_count(0U);
+    const agentari::system::GpuCapabilities gpu =
+        agentari::system::detect_gpu_capabilities();
     require((!gpu.vulkan_candidate || gpu.device_count > 0U),
             "GPU detector returned an invalid candidate report");
 
     std::vector<std::size_t> visits(10000U, 0U);
-    firstagent::parallel::Config config;
+    agentari::parallel::Config config;
     config.worker_count = 0U;
     config.grain_size = 17U;
     config.minimum_parallel_work = 1U;
-    firstagent::parallel::parallel_for(0U, visits.size(),
-                                       [&visits](std::size_t index) { ++visits[index]; }, config);
+    // Exercise repeated invocations: the worker threads should remain alive
+    // and reusable rather than being recreated for every kernel call.
+    for (std::size_t round = 0U; round < 8U; ++round) {
+        agentari::parallel::parallel_for(
+            0U, visits.size(), [&visits](std::size_t index) { ++visits[index]; }, config);
+    }
     for (const std::size_t visit : visits) {
-        require(visit == 1U, "parallel scheduler skipped or duplicated work");
+        require(visit == 8U, "persistent parallel scheduler skipped or duplicated work");
     }
 }
 
 void configurable_neurons() {
-    using Basic = firstagent::neuron::BasicNeuron<4U, 2U, 3U>;
-    using Modern = firstagent::neuron::ModernGatedNeuron<4U, 4U, 4U>;
-    using Compact = firstagent::neuron::CompactModernNeuron<4U, 4U, 4U>;
-    using Binary = firstagent::neuron::BinaryInferenceNeuron<4U, 2U, 3U>;
-    using Sparse = firstagent::neuron::SparseModernNeuron<4U, 4U, 2U>;
+    using Basic = agentari::neuron::BasicNeuron<4U, 2U, 3U>;
+    using Modern = agentari::neuron::ModernGatedNeuron<4U, 4U, 4U>;
+    using Compact = agentari::neuron::CompactModernNeuron<4U, 4U, 4U>;
+    using Binary = agentari::neuron::BinaryInferenceNeuron<4U, 2U, 3U>;
+    using Sparse = agentari::neuron::SparseModernNeuron<4U, 4U, 2U>;
     require(Basic::input_width == 4U && Basic::state_width == 2U &&
                 Basic::output_width == 3U,
             "basic neuron template dimensions were not preserved");
@@ -141,7 +150,7 @@ void configurable_neurons() {
 }
 
 void scalable_cpu_matrix() {
-    using namespace firstagent::nn::kernel;
+    using namespace agentari::nn::kernel;
     F32CpuMatrix left(64U, 64U, 1.0F);
     F32CpuMatrix right(64U, 64U, 2.0F);
     const F32CpuMatrix result = left.matmul(right);
@@ -151,6 +160,45 @@ void scalable_cpu_matrix() {
             "parallel CPU matrix tail result mismatch");
 }
 
+void transient_run_log() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        ("agentari-run-log-test-" + std::to_string(stamp) + ".log");
+    {
+        std::ofstream stale(path);
+        stale << "stale entry\n";
+    }
+    {
+        agentari::diagnostics::RunLog log(path);
+        require(log.healthy(), "transient run log did not open");
+        log.info("fresh entry");
+    }
+    std::ifstream first(path);
+    const std::string first_contents((std::istreambuf_iterator<char>(first)),
+                                     std::istreambuf_iterator<char>());
+    require(first_contents.find("stale entry") == std::string::npos,
+            "run log retained the previous run");
+    require(first_contents.find("fresh entry") != std::string::npos,
+            "run log did not record the current run");
+
+    {
+        agentari::diagnostics::RunLog log(path);
+        require(log.healthy(), "transient run log could not be reopened");
+        log.info("second entry");
+    }
+    std::ifstream second(path);
+    const std::string second_contents((std::istreambuf_iterator<char>(second)),
+                                      std::istreambuf_iterator<char>());
+    require(second_contents.find("fresh entry") == std::string::npos,
+            "run log was not cleared on the next startup");
+    require(second_contents.find("second entry") != std::string::npos,
+            "reopened run log did not record the new run");
+    std::error_code filesystem_error;
+    std::filesystem::remove(path, filesystem_error);
+    require(!filesystem_error, "run log test cleanup failed");
+}
+
 }  // namespace
 
 int main() {
@@ -158,11 +206,12 @@ int main() {
         bit_packing_round_trip();
         topology_and_parallel_execution();
         scalable_cpu_matrix();
+        transient_run_log();
         configurable_neurons();
-        std::cout << "firstagent system tests passed\n";
+        std::cout << "agentari system tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
-        std::cerr << "firstagent system tests failed: " << exception.what() << '\n';
+        std::cerr << "agentari system tests failed: " << exception.what() << '\n';
         return EXIT_FAILURE;
     }
 }

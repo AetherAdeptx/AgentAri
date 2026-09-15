@@ -1,9 +1,9 @@
-#include "firstagent/Tool.hpp"
+#include "agentari/Tool.hpp"
 
 #include <algorithm>
 #include <sstream>
 
-namespace firstagent {
+namespace agentari {
 
 bool ToolRegistry::register_tool(Tool tool, std::string& error) {
     if (tool.name.empty() || !tool.function) {
@@ -43,4 +43,4 @@ std::string ToolRegistry::describe() const {
     return output.str();
 }
 
-}  // namespace firstagent
+}  // namespace agentari

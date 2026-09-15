@@ -1,6 +1,6 @@
-#include "firstagent/Hardware.hpp"
+#include "agentari/Hardware.hpp"
 
-namespace firstagent::hardware {
+namespace agentari::hardware {
 
 CpuFeatures detect_cpu_features() noexcept {
     const system::CpuCapabilities& detected = system::cpu_capabilities();
@@ -22,4 +22,4 @@ std::string_view preferred_simd_backend() noexcept {
     return system::simd_name(system::cpu_capabilities().simd);
 }
 
-}  // namespace firstagent::hardware
+}  // namespace agentari::hardware
