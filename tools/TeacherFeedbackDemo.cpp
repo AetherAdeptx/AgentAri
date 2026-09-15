@@ -19,7 +19,8 @@ using namespace agentari::text::hierarchical;
 
 void print_usage(const char* program) {
     std::cout << "Usage: " << program
-              << " --feedback PATH [--max-records N] [--neurons N] [--workers N] [--log PATH]\n"
+              << " --feedback PATH [--max-records N] [--neurons N]"
+                 " [--tokenizer-neurons N] [--workers N] [--log PATH]\n"
               << "\nConsumes the controlled JSONL output of qwen_teacher_judge.py.\n"
               << "The judge model is not loaded by this executable and no checkpoint is written.\n"
               << "--workers 0 uses usable logical CPUs minus two; --log is transient and\n"
@@ -125,9 +126,11 @@ HierarchicalTokenizer make_tokenizer() {
     });
 }
 
-HierarchicalPredictionNetwork make_network(const std::size_t neurons) {
+HierarchicalPredictionNetwork make_network(const std::size_t neurons,
+                                            const std::size_t tokenizer_neurons) {
     PredictionNetworkConfig config;
     config.total_neuron_count = neurons;
+    config.tokenizer_neuron_count = tokenizer_neurons;
     config.neurons_per_layer = 2000U;
     config.additional_layer_count = 24U;
     config.min_neurons_per_layer = Min_Neurons_Per_Layer;
@@ -140,6 +143,7 @@ int main(int argc, char** argv) {
     std::string feedback_path;
     std::size_t max_records = 0U;
     std::size_t neurons = 56000U;
+    std::size_t tokenizer_neurons = 8000U;
     std::size_t requested_workers = 0U;
     std::filesystem::path log_path;
     for (int index = 1; index < argc; ++index) {
@@ -172,6 +176,13 @@ int main(int argc, char** argv) {
                 return 2;
             }
             neurons = std::stoull(*value);
+        } else if (argument == "--tokenizer-neurons") {
+            const auto value = next_value();
+            if (!value.has_value()) {
+                print_usage(argv[0]);
+                return 2;
+            }
+            tokenizer_neurons = std::stoull(*value);
         } else if (argument == "--workers") {
             const auto value = next_value();
             if (!value.has_value()) {
@@ -211,6 +222,7 @@ int main(int argc, char** argv) {
         agentari::system::cpu_capabilities();
     run_log.info("startup executable=agentari-teacher-demo feedback=" + feedback_path +
                  " neurons=" + std::to_string(neurons) +
+                 " tokenizer_neurons=" + std::to_string(tokenizer_neurons) +
                  " requested_workers=" + std::to_string(requested_workers) +
                  " effective_workers=" +
                  std::to_string(agentari::parallel::default_worker_count()) +
@@ -228,7 +240,7 @@ int main(int argc, char** argv) {
     }
 
     HierarchicalTokenizer tokenizer = make_tokenizer();
-    HierarchicalPredictionNetwork network = make_network(neurons);
+    HierarchicalPredictionNetwork network = make_network(neurons, tokenizer_neurons);
     TeacherFeedbackTrainer trainer(tokenizer, network);
     std::size_t records = 0U;
     std::size_t malformed = 0U;

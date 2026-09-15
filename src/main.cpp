@@ -72,17 +72,20 @@ struct HierarchicalRuntime {
 };
 
 agentari::text::hierarchical::PredictionNetworkConfig hierarchical_network_config(
-    const std::size_t total_neurons) {
+    const std::size_t total_neurons,
+    const std::size_t tokenizer_neurons) {
     using namespace agentari::text::hierarchical;
     PredictionNetworkConfig config;
     config.total_neuron_count = total_neurons;
+    config.tokenizer_neuron_count = tokenizer_neurons;
     config.neurons_per_layer = 2000U;
     config.additional_layer_count = 24U;
     config.min_neurons_per_layer = Min_Neurons_Per_Layer;
     return config;
 }
 
-HierarchicalRuntime start_hierarchical_runtime(const std::size_t total_neurons) {
+HierarchicalRuntime start_hierarchical_runtime(const std::size_t total_neurons,
+                                               const std::size_t tokenizer_neurons) {
     using namespace agentari::text::hierarchical;
 
     HierarchicalRuntime runtime{
@@ -97,7 +100,8 @@ HierarchicalRuntime start_hierarchical_runtime(const std::size_t total_neurons) 
             .vocabulary_capacity = 100000U,
             .context = ContextTokenizerConfig{.recent_word_limit = 256U},
         }),
-        .network = HierarchicalPredictionNetwork(hierarchical_network_config(total_neurons)),
+        .network = HierarchicalPredictionNetwork(
+            hierarchical_network_config(total_neurons, tokenizer_neurons)),
     };
     return runtime;
 }
@@ -166,7 +170,8 @@ void print_usage(const char* program) {
     std::cout << "Usage: " << program << " [--memory PATH]\n"
               << "       " << program << " [--memory PATH] [--run-for-ms N]\n"
               << "       " << program << " --test [--run-for-ms N]\n"
-              << "       " << program << " [--total-neurons N] [--workers N] [--log PATH]\n"
+              << "       " << program << " [--total-neurons N] [--tokenizer-neurons N]\n"
+              << "               [--workers N] [--log PATH]\n"
               << "               [--max-cpu-usage PCT] [--max-gpu-usage PCT] [--no-gui]\n"
               << "               [--vulkan]\n"
               << "       " << program << " --nn-demo\n"
@@ -174,6 +179,7 @@ void print_usage(const char* program) {
               << "\n--test uses a temporary runtime workspace and removes it on shutdown.\n"
               << "\n--workers 0 selects usable logical CPUs minus two; a positive value overrides it.\n"
               << "--total-neurons N sets the hierarchical network budget (default: 56,000).\n"
+              << "--tokenizer-neurons N fixes the aggregate tokenizer pool (default: 8,000).\n"
               << "--max-cpu-usage PCT caps the scheduler's worker-thread budget.\n"
               << "--max-gpu-usage PCT records the future GPU scheduler budget.\n"
               << "--no-gui runs the 8 ms AI loop without opening SDL; pair with --run-for-ms.\n"
@@ -285,6 +291,7 @@ int main(int argc, char* argv[]) {
     bool vulkan_requested = false;
     bool no_gui = false;
     std::size_t total_neuron_count = 0U;
+    std::size_t tokenizer_neuron_count = 8000U;
     std::size_t max_cpu_usage_percent = 100U;
     std::size_t max_gpu_usage_percent = 100U;
     std::filesystem::path log_path = "agentari-runtime.log";
@@ -321,6 +328,25 @@ int main(int argc, char* argv[]) {
                     throw std::invalid_argument("must be positive and fit the host size type");
                 }
                 total_neuron_count = static_cast<std::size_t>(neurons);
+            } catch (const std::exception& exception) {
+                std::cerr << "Invalid " << argument << " value: " << exception.what() << '\n';
+                return 2;
+            }
+        } else if ((argument == "--tokenizer-neurons" ||
+                    argument == "--tokenizer-neuron-count") &&
+                   index + 1 < argc) {
+            try {
+                const std::string tokenizer_argument = argv[++index];
+                if (!tokenizer_argument.empty() && tokenizer_argument.front() == '-') {
+                    throw std::invalid_argument("must be positive");
+                }
+                const auto neurons = std::stoull(tokenizer_argument);
+                if (neurons == 0U ||
+                    neurons > static_cast<unsigned long long>(
+                                  std::numeric_limits<std::size_t>::max())) {
+                    throw std::invalid_argument("must be positive and fit the host size type");
+                }
+                tokenizer_neuron_count = static_cast<std::size_t>(neurons);
             } catch (const std::exception& exception) {
                 std::cerr << "Invalid " << argument << " value: " << exception.what() << '\n';
                 return 2;
@@ -408,7 +434,8 @@ int main(int argc, char* argv[]) {
                  " simd=" + agentari::system::simd_name(startup_cpu.simd) +
                  " max_cpu_usage_percent=" + std::to_string(max_cpu_usage_percent) +
                  " max_gpu_usage_percent=" + std::to_string(max_gpu_usage_percent) +
-                 " total_neurons=" + std::to_string(total_neuron_count));
+                 " total_neurons=" + std::to_string(total_neuron_count) +
+                 " tokenizer_neurons=" + std::to_string(tokenizer_neuron_count));
 
     if (neural_demo) {
         run_log.info("running neural demo");
@@ -484,7 +511,8 @@ int main(int argc, char* argv[]) {
     });
     agentari::Agent agent(memory, tools, &predictor, &context);
     agentari::AgentWorker agent_worker(agent);
-    HierarchicalRuntime hierarchical_runtime = start_hierarchical_runtime(total_neuron_count);
+    HierarchicalRuntime hierarchical_runtime =
+        start_hierarchical_runtime(total_neuron_count, tokenizer_neuron_count);
     std::optional<agentari::SdlWindow> window;
     if (!no_gui) {
         window.emplace();
@@ -518,14 +546,26 @@ int main(int argc, char* argv[]) {
     }
     status += " Hierarchical network: " +
               std::to_string(hierarchical_runtime.network.state().total_neuron_count) +
-              " neurons (fresh; checkpointing disabled).";
+              " neurons (tokenizer=" +
+              std::to_string(hierarchical_runtime.network.state().tokenizer_neuron_count) +
+              ", general=" +
+              std::to_string(hierarchical_runtime.network.state().layer_neuron_count) +
+              "; fresh; checkpointing disabled).";
     std::cout << "Hierarchical network: "
               << hierarchical_runtime.network.state().total_neuron_count
-              << " neurons, spatial cells="
+              << " neurons (tokenizer="
+              << hierarchical_runtime.network.state().tokenizer_neuron_count
+              << ", general="
+              << hierarchical_runtime.network.state().layer_neuron_count
+              << "), spatial cells="
               << hierarchical_runtime.network.spatial_map().occupied_cell_count()
               << " (fresh start; checkpointing disabled)\n";
     run_log.info("runtime ready hierarchical_neurons=" +
                  std::to_string(hierarchical_runtime.network.state().total_neuron_count) +
+                 " tokenizer_neurons=" +
+                 std::to_string(hierarchical_runtime.network.state().tokenizer_neuron_count) +
+                 " layer_neurons=" +
+                 std::to_string(hierarchical_runtime.network.state().layer_neuron_count) +
                  " spatial_cells=" +
                  std::to_string(hierarchical_runtime.network.spatial_map().occupied_cell_count()));
     bool input_closed = false;

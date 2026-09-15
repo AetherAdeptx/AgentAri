@@ -41,10 +41,16 @@ inline constexpr std::uint32_t sequence_end_id =
 inline constexpr std::size_t Min_Neurons_Per_Layer = 1U;
 
 struct PredictionNetworkConfig {
-    // A zero total derives the budget from the layer count and per-layer size.
-    // The default is 4 tokenizer-prediction layers plus 24 general layers,
-    // each with 2,000 neurons.
+    // A zero total derives the overall budget from the two separate pools.
+    // The total includes both the fixed tokenizer pool and the general-layer
+    // pool; it is not an additional allocation on top of those pools.
     std::size_t total_neuron_count{0U};
+    // Exact aggregate neuron count for the four tokenizer-prediction layers.
+    // The default is 4 * 2,000 = 8,000. This pool is allocated independently
+    // from the additional/general layers.
+    std::size_t tokenizer_neuron_count{8000U};
+    // Default size for each additional/general layer when the overall total
+    // is derived. Tokenizer layers use tokenizer_neuron_count instead.
     std::size_t neurons_per_layer{2000U};
     std::size_t additional_layer_count{24U};
     std::array<std::size_t, prediction_layer_count> layer_size_weights{
@@ -95,6 +101,8 @@ struct PredictionLayerState {
 struct PredictionNetworkState {
     std::uint64_t step{0U};
     std::size_t total_neuron_count{0U};
+    std::size_t tokenizer_neuron_count{0U};
+    std::size_t layer_neuron_count{0U};
     std::vector<PredictionLayerState> layers{};
 };
 

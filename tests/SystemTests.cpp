@@ -194,6 +194,7 @@ void configurable_neuron_mix() {
 
     agentari::text::hierarchical::PredictionNetworkConfig network_config;
     network_config.total_neuron_count = 1000U;
+    network_config.tokenizer_neuron_count = 1000U;
     network_config.neurons_per_layer = 1U;
     network_config.additional_layer_count = 0U;
     network_config.min_neurons_per_layer = 1U;
@@ -207,6 +208,7 @@ void configurable_neuron_mix() {
     custom.add_percentage(NeuronType::basic, 100.0F);
     agentari::text::hierarchical::PredictionNetworkConfig custom_config;
     custom_config.total_neuron_count = 16U;
+    custom_config.tokenizer_neuron_count = 16U;
     custom_config.neurons_per_layer = 1U;
     custom_config.additional_layer_count = 0U;
     custom_config.min_neurons_per_layer = 1U;

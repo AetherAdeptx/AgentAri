@@ -38,7 +38,8 @@ float clamp_unit(const float value) {
 HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
     PredictionNetworkConfig config)
     : config_(config) {
-    if (config_.neurons_per_layer == 0U || config_.min_neurons_per_layer == 0U ||
+    if (config_.neurons_per_layer == 0U || config_.tokenizer_neuron_count == 0U ||
+        config_.min_neurons_per_layer == 0U ||
         config_.maximum_transition_neurons == 0U || config_.local_input_fraction < 0.0F ||
         config_.network_reference_fraction < 0.0F || config_.active_cross_layer_fraction < 0.0F ||
         config_.local_input_fraction > 1.0F || config_.network_reference_fraction > 1.0F ||
@@ -58,17 +59,40 @@ HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
         std::numeric_limits<std::size_t>::max() - prediction_layer_count) {
         throw std::invalid_argument("layer count overflows the configured size type");
     }
-    const std::size_t layer_count = prediction_layer_count + config_.additional_layer_count;
     if (config_.total_neuron_count == 0U) {
-        if (layer_count > std::numeric_limits<std::size_t>::max() /
-                              config_.neurons_per_layer) {
-            throw std::invalid_argument("derived neuron count overflows the configured size type");
+        if (config_.additional_layer_count >
+            std::numeric_limits<std::size_t>::max() / config_.neurons_per_layer) {
+            throw std::invalid_argument(
+                "derived general-layer neuron count overflows the configured size type");
         }
-        config_.total_neuron_count = layer_count * config_.neurons_per_layer;
+        const std::size_t general_layer_count =
+            config_.additional_layer_count * config_.neurons_per_layer;
+        if (config_.tokenizer_neuron_count >
+            std::numeric_limits<std::size_t>::max() - general_layer_count) {
+            throw std::invalid_argument(
+                "derived total neuron count overflows the configured size type");
+        }
+        config_.total_neuron_count = config_.tokenizer_neuron_count + general_layer_count;
     }
-    if (config_.total_neuron_count < layer_count ||
-        config_.min_neurons_per_layer > config_.total_neuron_count / layer_count) {
-        throw std::invalid_argument("total neuron count is too small for layer minimums");
+    if (config_.tokenizer_neuron_count <
+        prediction_layer_count * config_.min_neurons_per_layer) {
+        throw std::invalid_argument("tokenizer neuron count is too small for tokenizer layers");
+    }
+    if (config_.total_neuron_count < config_.tokenizer_neuron_count) {
+        throw std::invalid_argument(
+            "total neuron count is smaller than the fixed tokenizer neuron pool");
+    }
+    const std::size_t general_neuron_count =
+        config_.total_neuron_count - config_.tokenizer_neuron_count;
+    if (config_.additional_layer_count == 0U && general_neuron_count != 0U) {
+        throw std::invalid_argument(
+            "general-layer neurons require at least one additional layer");
+    }
+    if (config_.additional_layer_count != 0U &&
+        config_.additional_layer_count >
+            general_neuron_count / config_.min_neurons_per_layer) {
+        throw std::invalid_argument(
+            "general-layer neuron count is too small for layer minimums");
     }
     if (std::fabs((config_.local_input_fraction + config_.network_reference_fraction) - 1.0F) >
         1.0e-4F) {
@@ -80,6 +104,8 @@ HierarchicalPredictionNetwork::HierarchicalPredictionNetwork(
         config_.total_neuron_count,
         std::span<const std::size_t>(layer_counts.data(), layer_counts.size()));
     state_.total_neuron_count = config_.total_neuron_count;
+    state_.tokenizer_neuron_count = config_.tokenizer_neuron_count;
+    state_.layer_neuron_count = general_neuron_count;
     state_.layers.resize(layer_counts.size());
     neuron_groups_.resize(layer_counts.size());
     local_signal_scratch_.resize(layer_counts.size(), 0.0F);
@@ -133,55 +159,101 @@ std::size_t HierarchicalPredictionNetwork::index(const PredictionLayer layer) no
 std::vector<std::size_t>
 HierarchicalPredictionNetwork::allocate_layer_counts() const {
     const std::size_t layer_count = prediction_layer_count + config_.additional_layer_count;
-    std::size_t weight_total = 0U;
-    for (std::size_t layer = 0U; layer < layer_count; ++layer) {
-        const std::size_t weight = layer < prediction_layer_count
-                                       ? config_.layer_size_weights[layer]
-                                       : config_.additional_layer_size_weight;
-        if (weight_total > std::numeric_limits<std::size_t>::max() - weight) {
-            throw std::invalid_argument("layer-size weights overflow the configured size type");
-        }
-        weight_total += weight;
-    }
-    if (weight_total == 0U) {
-        throw std::invalid_argument("layer-size weights must have a non-zero total");
-    }
-
-    std::vector<std::size_t> counts(layer_count, config_.min_neurons_per_layer);
+    std::vector<std::size_t> counts(layer_count, 0U);
     std::vector<long double> remainders(layer_count, 0.0L);
-    const std::size_t minimum_total = config_.min_neurons_per_layer * layer_count;
-    const std::size_t remaining = config_.total_neuron_count - minimum_total;
-    std::size_t assigned = minimum_total;
-    for (std::size_t layer = 0U; layer < layer_count; ++layer) {
-        const std::size_t weight = layer < prediction_layer_count
-                                       ? config_.layer_size_weights[layer]
-                                       : config_.additional_layer_size_weight;
-        const long double exact = static_cast<long double>(remaining) *
-                                  static_cast<long double>(weight) /
-                                  static_cast<long double>(weight_total);
-        const std::size_t floor_count = static_cast<std::size_t>(std::floor(exact));
-        counts[layer] += floor_count;
-        remainders[layer] = exact -
-                            static_cast<long double>(floor_count);
-        assigned += floor_count;
-    }
 
-    auto symmetric_rank = [layer_count](const std::size_t layer) noexcept {
-        return (layer & 1U) == 0U ? layer / 2U : layer_count - 1U - layer / 2U;
-    };
-    while (assigned < config_.total_neuron_count) {
-        std::size_t layer = 0U;
-        for (std::size_t candidate = 1U; candidate < layer_count; ++candidate) {
-            if (remainders[candidate] > remainders[layer] ||
-                (remainders[candidate] == remainders[layer] &&
-                 symmetric_rank(candidate) < symmetric_rank(layer))) {
-                layer = candidate;
-            }
+    const auto symmetric_rank = [](const std::size_t local_index,
+                                   const std::size_t pool_size) noexcept {
+        const std::size_t center = (pool_size - 1U) / 2U;
+        if (local_index == center) {
+            return std::size_t{0U};
         }
-        ++counts[layer];
-        remainders[layer] = -1.0L;
-        ++assigned;
-    }
+        const std::size_t distance = local_index > center
+                                         ? local_index - center
+                                         : center - local_index;
+        // Prefer the positive side when an even-sized pool has two equally
+        // central cells, then alternate deterministically outward.
+        return distance * 2U + (local_index < center ? 1U : 0U);
+    };
+
+    const auto allocate_pool = [&](const std::size_t first_layer,
+                                   const std::size_t pool_size,
+                                   const std::size_t pool_budget,
+                                   const auto& weight_for_layer) {
+        if (pool_size == 0U) {
+            if (pool_budget != 0U) {
+                throw std::invalid_argument(
+                    "a non-zero neuron pool requires layers to receive it");
+            }
+            return;
+        }
+        if (config_.min_neurons_per_layer >
+            std::numeric_limits<std::size_t>::max() / pool_size) {
+            throw std::invalid_argument("layer minimum total overflows the size type");
+        }
+        const std::size_t minimum_total = config_.min_neurons_per_layer * pool_size;
+        if (pool_budget < minimum_total) {
+            throw std::invalid_argument("neuron pool is too small for its layer minimums");
+        }
+
+        std::size_t weight_total = 0U;
+        for (std::size_t local = 0U; local < pool_size; ++local) {
+            const std::size_t weight = weight_for_layer(local);
+            if (weight == 0U || weight_total >
+                                    std::numeric_limits<std::size_t>::max() - weight) {
+                throw std::invalid_argument(
+                    "layer-size weights must be non-zero and fit the size type");
+            }
+            weight_total += weight;
+        }
+        if (weight_total == 0U) {
+            throw std::invalid_argument("layer-size weights must have a non-zero total");
+        }
+
+        for (std::size_t local = 0U; local < pool_size; ++local) {
+            counts[first_layer + local] = config_.min_neurons_per_layer;
+        }
+        const std::size_t remaining = pool_budget - minimum_total;
+        std::size_t assigned = minimum_total;
+        for (std::size_t local = 0U; local < pool_size; ++local) {
+            const long double exact =
+                static_cast<long double>(remaining) *
+                static_cast<long double>(weight_for_layer(local)) /
+                static_cast<long double>(weight_total);
+            const std::size_t floor_count = static_cast<std::size_t>(std::floor(exact));
+            counts[first_layer + local] += floor_count;
+            remainders[first_layer + local] =
+                exact - static_cast<long double>(floor_count);
+            assigned += floor_count;
+        }
+        while (assigned < pool_budget) {
+            std::size_t best_layer = first_layer;
+            for (std::size_t local = 1U; local < pool_size; ++local) {
+                const std::size_t candidate = first_layer + local;
+                const std::size_t best_local = best_layer - first_layer;
+                if (remainders[candidate] > remainders[best_layer] ||
+                    (remainders[candidate] == remainders[best_layer] &&
+                     symmetric_rank(local, pool_size) <
+                         symmetric_rank(best_local, pool_size))) {
+                    best_layer = candidate;
+                }
+            }
+            ++counts[best_layer];
+            remainders[best_layer] = -1.0L;
+            ++assigned;
+        }
+    };
+
+    allocate_pool(0U, prediction_layer_count, config_.tokenizer_neuron_count,
+                  [this](const std::size_t local) {
+                      return config_.layer_size_weights[local];
+                  });
+    allocate_pool(prediction_layer_count, config_.additional_layer_count,
+                  config_.total_neuron_count - config_.tokenizer_neuron_count,
+                  [this](const std::size_t) {
+                      return config_.additional_layer_size_weight;
+                  });
+
     const std::size_t minimum_per_layer = config_.min_neurons_per_layer;
     if (std::any_of(counts.begin(), counts.end(), [minimum_per_layer](const std::size_t count) {
             return count < minimum_per_layer;

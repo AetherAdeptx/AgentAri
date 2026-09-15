@@ -48,6 +48,7 @@ using agentari::text::hierarchical::sequence_begin_id;
 
 struct ConsoleOptions {
     std::size_t neurons{56000U};
+    std::size_t tokenizer_neurons{8000U};
     std::size_t workers{0U};
     std::size_t max_cpu_usage_percent{100U};
     std::string log_path{"agentari-console.log"};
@@ -58,10 +59,12 @@ struct ConsoleOptions {
 
 void print_usage(const char* program) {
     std::cout << "Usage: " << program
-              << " [--total-neurons N] [--workers N] [--max-cpu-usage PCT]"
+              << " [--total-neurons N] [--tokenizer-neurons N]"
+                 " [--workers N] [--max-cpu-usage PCT]"
                  " [--log PATH] [--state PATH]"
                  " [--resume-state] [--no-prompt]\n\n"
-              << "The default is a fresh in-memory 56,000-neuron network with 28 layers.\n"
+              << "The default is a fresh 56,000-neuron network: 8,000 tokenizer neurons\n"
+              << "plus 48,000 general-layer neurons across 24 outer layers.\n"
               << "Learned records are appended to the state file on each update.\n"
               << "Normal startup deletes only that exact state file; --resume-state loads it.\n\n"
               << "Commands:\n"
@@ -157,9 +160,11 @@ HierarchicalTokenizer make_tokenizer() {
     });
 }
 
-HierarchicalPredictionNetwork make_network(const std::size_t neurons) {
+HierarchicalPredictionNetwork make_network(const std::size_t neurons,
+                                            const std::size_t tokenizer_neurons) {
     PredictionNetworkConfig config;
     config.total_neuron_count = neurons;
+    config.tokenizer_neuron_count = tokenizer_neurons;
     config.neurons_per_layer = 2000U;
     config.additional_layer_count = 24U;
     config.min_neurons_per_layer =
@@ -392,7 +397,7 @@ public:
     explicit ConsoleSession(ConsoleOptions options)
         : options_(std::move(options)),
           tokenizer_(make_tokenizer()),
-          network_(make_network(options_.neurons)),
+          network_(make_network(options_.neurons, options_.tokenizer_neurons)),
           log_(options_.log_path) {}
 
     int run() {
@@ -411,6 +416,9 @@ public:
                   << "\n"
                   << "  restored records: " << restored_event_count_ << "\n"
                   << "  neurons: " << state.total_neuron_count
+                  << " (tokenizer=" << state.tokenizer_neuron_count
+                  << ", general=" << state.layer_neuron_count << ")"
+                  << "\n"
                   << "  layers: " << state.layers.size() << " (4 tokenizer + 24 outer)\n"
                   << "  workers: " << agentari::parallel::default_worker_count()
                   << " (requested " << options_.workers << ")\n"
@@ -425,6 +433,8 @@ public:
         log_.info("record=" + std::to_string(record_number_) +
                   " session_start restored=" + std::to_string(restored_event_count_) +
                   " neurons=" + std::to_string(state.total_neuron_count) +
+                  " tokenizer_neurons=" + std::to_string(state.tokenizer_neuron_count) +
+                  " layer_neurons=" + std::to_string(state.layer_neuron_count) +
                   " layers=" + std::to_string(state.layers.size()) +
                   " workers=" + std::to_string(agentari::parallel::default_worker_count()));
 
@@ -836,6 +846,8 @@ private:
             total_transitions += layer.transition_neurons;
         }
         std::cout << "state: step=" << state.step << " neurons=" << state.total_neuron_count
+                  << " tokenizer_neurons=" << state.tokenizer_neuron_count
+                  << " layer_neurons=" << state.layer_neuron_count
                   << " objects=" << network_.instantiated_neuron_count()
                   << " layers=" << state.layers.size()
                   << " observations=" << total_observations
@@ -915,6 +927,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
         if (argument == "--neurons" || argument == "--total-neurons" ||
+            argument == "--tokenizer-neurons" ||
+            argument == "--tokenizer-neuron-count" ||
             argument == "--workers" || argument == "--max-cpu-usage" ||
             argument == "--log" || argument == "--state") {
             if (index + 1 >= argc) {
@@ -936,7 +950,9 @@ int main(int argc, char* argv[]) {
             }
             std::size_t parsed = 0U;
             if (!parse_size(value, parsed) ||
-                ((argument == "--neurons" || argument == "--total-neurons") &&
+                ((argument == "--neurons" || argument == "--total-neurons" ||
+                  argument == "--tokenizer-neurons" ||
+                  argument == "--tokenizer-neuron-count") &&
                  parsed == 0U) ||
                 (argument == "--max-cpu-usage" && (parsed == 0U || parsed > 100U))) {
                 std::cerr << "Invalid value for " << argument << ": " << value << '\n';
@@ -944,6 +960,9 @@ int main(int argc, char* argv[]) {
             }
             if (argument == "--neurons" || argument == "--total-neurons") {
                 options.neurons = parsed;
+            } else if (argument == "--tokenizer-neurons" ||
+                       argument == "--tokenizer-neuron-count") {
+                options.tokenizer_neurons = parsed;
             } else if (argument == "--max-cpu-usage") {
                 options.max_cpu_usage_percent = parsed;
             } else {

@@ -38,6 +38,7 @@ void predictive_layers_learn() {
     });
     HierarchicalPredictionNetwork network(PredictionNetworkConfig{
         .total_neuron_count = 56000U,
+        .tokenizer_neuron_count = 8000U,
         .neurons_per_layer = 2000U,
         .additional_layer_count = 24U,
         .min_neurons_per_layer = 16U,
@@ -112,8 +113,16 @@ void predictive_layers_learn() {
                 state.layers.size() == prediction_layer_count + 24U,
             "prediction network did not create the tokenizer plus 24 additional layers");
     std::size_t total_neurons = 0U;
-    for (const PredictionLayerState& layer : state.layers) {
+    std::size_t tokenizer_neurons = 0U;
+    std::size_t general_neurons = 0U;
+    for (std::size_t layer_index = 0U; layer_index < state.layers.size(); ++layer_index) {
+        const PredictionLayerState& layer = state.layers[layer_index];
         total_neurons += layer.neuron_count;
+        if (layer_index < prediction_layer_count) {
+            tokenizer_neurons += layer.neuron_count;
+        } else {
+            general_neurons += layer.neuron_count;
+        }
         require(layer.neuron_count == 2000U,
                 "default additional layers did not receive 2,000 neurons");
         require(layer.local_input_neurons + layer.network_reference_neurons ==
@@ -126,6 +135,9 @@ void predictive_layers_learn() {
     }
     require(total_neurons == state.total_neuron_count && total_neurons == 56000U,
             "layer allocations did not consume the global neuron budget");
+    require(tokenizer_neurons == state.tokenizer_neuron_count && tokenizer_neurons == 8000U &&
+                general_neurons == state.layer_neuron_count && general_neurons == 48000U,
+            "tokenizer and general neuron pools were not allocated separately");
 
     const SpatialNeuronMap& spatial = network.spatial_map();
     require(spatial.size() == total_neurons, "spatial map missed allocated neurons");
@@ -201,6 +213,7 @@ void predictive_layers_learn() {
 
     HierarchicalPredictionNetwork scaled_network(PredictionNetworkConfig{
         .total_neuron_count = 10000U,
+        .tokenizer_neuron_count = 10000U,
         .neurons_per_layer = 1U,
         .additional_layer_count = 0U,
         .min_neurons_per_layer = 16U,
@@ -216,6 +229,31 @@ void predictive_layers_learn() {
             "global budget did not rescale correctly when extra layers were removed");
 }
 
+void separate_tokenizer_pool() {
+    using namespace agentari::text::hierarchical;
+
+    PredictionNetworkConfig config;
+    config.total_neuron_count = 100U;
+    config.tokenizer_neuron_count = 40U;
+    config.neurons_per_layer = 1U;
+    config.additional_layer_count = 2U;
+    config.min_neurons_per_layer = 1U;
+
+    HierarchicalPredictionNetwork network(config);
+    const PredictionNetworkState state = network.state();
+    require(state.total_neuron_count == 100U && state.tokenizer_neuron_count == 40U &&
+                state.layer_neuron_count == 60U,
+            "separate tokenizer pool did not preserve both configured budgets");
+    require(state.layers.size() == 6U && state.layers[0U].neuron_count == 10U &&
+                state.layers[1U].neuron_count == 10U && state.layers[2U].neuron_count == 10U &&
+                state.layers[3U].neuron_count == 10U && state.layers[4U].neuron_count == 30U &&
+                state.layers[5U].neuron_count == 30U,
+            "tokenizer and general layers did not receive their independent pool sizes");
+    require(network.spatial_map().size() == 100U &&
+                network.spatial_map().occupied_cell_count() == 100U,
+            "separate neuron pools were not fully placed in the spatial map");
+}
+
 void typed_allocation_order_and_determinism() {
     using namespace agentari::text::hierarchical;
     using agentari::neuron::NeuronType;
@@ -228,6 +266,7 @@ void typed_allocation_order_and_determinism() {
 
     PredictionNetworkConfig config;
     config.total_neuron_count = 100U;
+    config.tokenizer_neuron_count = 100U;
     config.neurons_per_layer = 1U;
     config.additional_layer_count = 0U;
     config.min_neurons_per_layer = 1U;
@@ -301,6 +340,7 @@ void batched_observation_contract() {
     });
     HierarchicalPredictionNetwork network(PredictionNetworkConfig{
         .total_neuron_count = 4000U,
+        .tokenizer_neuron_count = 4000U,
         .neurons_per_layer = 1000U,
         .additional_layer_count = 0U,
         .min_neurons_per_layer = 16U,
@@ -341,6 +381,7 @@ void worker_local_delta_contract() {
     });
     HierarchicalPredictionNetwork network(PredictionNetworkConfig{
         .total_neuron_count = 4000U,
+        .tokenizer_neuron_count = 4000U,
         .neurons_per_layer = 1000U,
         .additional_layer_count = 0U,
         .min_neurons_per_layer = 16U,
@@ -383,6 +424,7 @@ void worker_local_delta_contract() {
 
     HierarchicalPredictionNetwork sequential_network(PredictionNetworkConfig{
         .total_neuron_count = 4000U,
+        .tokenizer_neuron_count = 4000U,
         .neurons_per_layer = 1000U,
         .additional_layer_count = 0U,
         .min_neurons_per_layer = 16U,
@@ -416,6 +458,7 @@ void teacher_feedback_contract() {
     });
     HierarchicalPredictionNetwork network(PredictionNetworkConfig{
         .total_neuron_count = 4000U,
+        .tokenizer_neuron_count = 4000U,
         .neurons_per_layer = 1000U,
         .additional_layer_count = 0U,
         .min_neurons_per_layer = 16U,
@@ -467,6 +510,7 @@ void teacher_feedback_contract() {
 int main() {
     try {
         predictive_layers_learn();
+        separate_tokenizer_pool();
         typed_allocation_order_and_determinism();
         batched_observation_contract();
         worker_local_delta_contract();

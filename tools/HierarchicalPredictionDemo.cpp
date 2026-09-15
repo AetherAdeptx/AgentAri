@@ -353,7 +353,9 @@ int main(int argc, char* argv[]) {
                   << "  batch size: " << options.batch_size << "\n"
                   << "  tokenizer words: " << tokenizer.words().size() << "\n"
                   << "  learned parts: " << tokenizer.parts().size() << "\n"
-                  << "  network neurons: " << network.state().total_neuron_count << "\n"
+                  << "  network neurons: " << network.state().total_neuron_count
+                  << " (tokenizer=" << network.state().tokenizer_neuron_count
+                  << ", general=" << network.state().layer_neuron_count << ")\n"
                   << "  network steps: " << network.state().step << "\n"
                   << "  checkpointing: disabled\n";
         print_metrics("  online pre-update metrics:", training_metrics);

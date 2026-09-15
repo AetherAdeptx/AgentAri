@@ -119,6 +119,18 @@ The SDL executable accepts `--total-neurons N`, `--max-cpu-usage PCT`,
 `--max-gpu-usage PCT`, and `--no-gui`. CPU limits cap worker-thread selection;
 the GPU value is recorded as a scheduler budget until GPU throttling is added.
 
+The hierarchical network has two separate neuron pools. `tokenizer_neuron_count`
+is a fixed aggregate budget for the four tokenizer layers; the remaining
+`total_neuron_count - tokenizer_neuron_count` neurons are allocated only across
+the additional/general layers. The defaults are 8,000 tokenizer neurons and
+48,000 general-layer neurons. Override the tokenizer pool with
+`--tokenizer-neurons N` when using a smaller total network, for example:
+
+```bash
+./build-agentari/agentari-console --total-neurons 1000 \
+  --tokenizer-neurons 100 --no-prompt
+```
+
 ## Feeding a text file
 
 Each non-empty line becomes one training record. This example preserves lines
